@@ -44,3 +44,7 @@ primary permissions do not imply access to aggregate platform sales.
 Administrators can review import status at `/admin/online-sales-sync`. Invalid
 inputs or an unavailable source preserve the last committed data rather than
 turning missing reports into zero.
+
+## Online appearance
+
+Online Sales uses the embedded Satoshi typeface, flat panels, hairline borders and brand-blue chart ink. The new skin applies only to Online Sales, including its temporary outgoing TV picture. Exact amounts, platform ordering, reporting dates, missing-versus-zero values, permissions and the existing slideshow are preserved. Negative sales retain red styling. The font is embedded once and needs no external request.

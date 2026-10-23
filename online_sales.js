@@ -233,9 +233,9 @@ function onlineTrendChart(models,size={}){
   for(let i=0;i<4;i++){const amount=min+span*i/3,yy=y(amount);svg+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="#e4e4e7"/><text x="${L-8}" y="${yy+4}" text-anchor="end" fill="#71717a" font-size="11">${esc(tick(amount))}</text>`;}
   svg+=`<line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" stroke="#a1a1aa"/>`;
   if(bars)models.forEach((model,index)=>{if(model.total!==null)svg+=`<rect x="${x(index)-slot*.3}" y="${Math.min(y(0),y(model.total))}" width="${slot*.6}" height="${Math.max(model.total===0?1:0,Math.abs(y(model.total)-y(0)))}" fill="#97aecb"><title>${esc(model.period.label)}: ${onlineMoney(model.total)}</title></rect>`;});
-  let path='';models.forEach((model,index)=>{if(model.total===null){path='';return;}const point=`${x(index)},${y(model.total)}`;if(path)svg+=`<path d="M${path} L${point}" fill="none" stroke="#12356e" stroke-width="2.5"/>`;path=point;});
+  let path='';models.forEach((model,index)=>{if(model.total===null){path='';return;}const point=`${x(index)},${y(model.total)}`;if(path)svg+=`<path d="M${path} L${point}" fill="none" stroke="#38629e" stroke-width="2.5"/>`;path=point;});
   models.forEach((model,index)=>{
-    if(model.total!==null)svg+=`<circle cx="${x(index)}" cy="${y(model.total)}" r="${models.length>20?2.5:4}" fill="#12356e"><title>${esc(model.period.label)}: ${onlineMoney(model.total)}</title></circle>`;
+    if(model.total!==null)svg+=`<circle cx="${x(index)}" cy="${y(model.total)}" r="${models.length>20?2.5:4}" fill="#38629e"><title>${esc(model.period.label)}: ${onlineMoney(model.total)}</title></circle>`;
     const stride=Math.max(1,Math.ceil(models.length/Math.max(2,pw/(weeks?36:95))));
     const last=models.length-1,spaced=index%stride===0&&x(last)-x(index)>=50&&x(index)-x(0)>=50;
     if(index===0||index===last||spaced)svg+=`<text x="${x(index)}" y="${H-17}" text-anchor="${index===0?'start':index===last?'end':'middle'}" fill="#52525b" font-size="${weeks?10:11}">${esc(model.period.mode==='monthly'?model.period.short:onlineDateLabel(model.period.start,true))}</text>`;

@@ -603,6 +603,10 @@ def render_html(data):
     tpl = io.open(os.path.join(HERE, "template.html"), encoding="utf-8").read()
     executive_detail = io.open(os.path.join(HERE, "executive_detail.js"), encoding="utf-8").read()
     tpl = tpl.replace("/*__EXECUTIVE_DETAILS__*/", executive_detail)
+    for marker, filename in (("/*__ONLINE_FONTS__*/", "satoshi_fonts.css"),
+                             ("/*__ONLINE_STYLES__*/", "online_sales.css")):
+        with io.open(os.path.join(HERE, filename), encoding="utf-8") as asset:
+            tpl = tpl.replace(marker, asset.read())
     for marker, filename in (("/*__DASHBOARD_ACCESS__*/", "dashboard_access.js"),
                              ("/*__CHART_DRILLDOWN__*/", "chart_drilldown.js"),
                              ("/*__SECONDARY_BREAKDOWN__*/", "secondary_breakdown.js"),
