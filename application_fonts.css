@@ -1,0 +1,5 @@
+/* One family across dashboards, charts, forms, reports and account controls.
+   Keep every existing font size, weight, colour and layout declaration. */
+html,body,body *,body *::before,body *::after{
+  font-family:"Satoshi","Satoshi Variable",system-ui,-apple-system,sans-serif!important;
+}

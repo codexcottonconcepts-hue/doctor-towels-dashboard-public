@@ -620,7 +620,7 @@ def render_html(data):
         sys.exit("FAILED: template.html has no /*__DATA__*/ placeholder.")
     # Imported names must remain JSON values, including a literal </script>.
     payload = json.dumps(data, separators=(",", ":")).replace("<", "\\u003c")
-    return tpl.replace("/*__DATA__*/", payload) + dropdown_ui.assets()
+    return tpl.replace("/*__DATA__*/", payload) + dropdown_ui.assets(include_font_faces=False)
 
 
 def main():
