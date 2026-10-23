@@ -271,7 +271,9 @@ function dashboardTvEnabled(){
 /* The slides only render the already-authorized payload. Polling remains the
    sole data request, and an unconfirmed response pauses all slide changes. */
 const DASHBOARD_SLIDE_INTERVAL=10000;
+const DASHBOARD_SLIDE_DURATION=1000;
 let dashboardSlideTimer=null,dashboardOnlineSlide='combined',dashboardHomeSlide='brand',dashboardSlideStarted=false;
+let dashboardSlideOutgoing=null,dashboardSlideAnimations=[],dashboardSlideRendering=false,dashboardSlideGeneration=0;
 function dashboardTvPrepareSlide(){
   if(dashboardSlideStarted||!dashboardTvEnabled()||!dashboardUsablePage('home'))return;
   dashboardSlideStarted=true;dashboardHomeSlide='brand';page='home';
@@ -297,21 +299,71 @@ function dashboardTvShowSlide(nextPage,nextVariant=''){
   const next=dashboardTvSlideOptions().find(slide=>slide.page===nextPage&&(slide.variant||'')===nextVariant);
   if(!next||!dashboardUsablePage(next.page))return false;
   dashboardTvSlideshowStop();
-  page=next.page;
-  if(page==='home')dashboardHomeSlide=next.variant||'';
-  else if(next.variant)dashboardOnlineSlide=next.variant;
-  render();dashboardTvPresentation(true,true);dashboardTvSlideshow(true);
+  dashboardTvAdvance(next);dashboardTvSlideshow(true);
   return true;
 }
+function dashboardTvReducedMotion(){
+  return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+/* Freeze only layout containers. SVG chart geometry and inline colours already
+   describe the picture; copying every SVG computed style would delay older TVs. */
+function dashboardTvCaptureSlide(){
+  dashboardTvPresentationStop();
+  if(!dashboardTvEnabled()||dashboardLiveNeedsRender||dashboardTvReducedMotion())return;
+  const app=document.querySelector('.app');
+  if(!app||typeof app.animate!=='function'||typeof window.getComputedStyle!=='function')return;
+  const clone=app.cloneNode(true);
+  const sources=[app,...app.querySelectorAll('*')],copies=[clone,...clone.querySelectorAll('*')];
+  for(let i=0;i<sources.length;i++){
+    const copy=copies[i];copy.removeAttribute('id');
+    if(!sources[i].matches('.app,.report,.rhead,.body,.canvas,.cards,.vgrid,.vis,.tv-brand-slide'))continue;
+    const style=window.getComputedStyle(sources[i]);
+    for(const property of style)copy.style.setProperty(property,style.getPropertyValue(property),'important');
+    copy.style.setProperty('animation','none','important');
+    copy.style.setProperty('transition','none','important');
+  }
+  const frame=document.createElement('div');
+  frame.className='tv-slide-outgoing';frame.setAttribute('aria-hidden','true');frame.inert=true;
+  frame.style.backgroundColor=window.getComputedStyle(document.body).backgroundColor;
+  frame.append(clone);document.body.append(frame);dashboardSlideOutgoing=frame;
+}
+function dashboardTvAdvance(next){
+  dashboardTvCaptureSlide();
+  dashboardSlideRendering=true;
+  try{
+    page=next.page;
+    if(page==='home')dashboardHomeSlide=next.variant||'';
+    else if(next.variant)dashboardOnlineSlide=next.variant;
+    render();
+  }finally{dashboardSlideRendering=false;}
+  dashboardTvPresentation(true,true);
+}
+function dashboardTvBeforeRender(){
+  // Polls and user actions cancel an in-flight picture before updating the DOM.
+  if(!dashboardSlideRendering)dashboardTvPresentationStop();
+}
 function dashboardTvPresentationStop(){
-  const content=document.getElementById('page');if(content?.dataset)delete content.dataset.tvTransition;
+  dashboardSlideGeneration++;
+  const animations=dashboardSlideAnimations;dashboardSlideAnimations=[];
+  for(const animation of animations)animation.cancel();
+  dashboardSlideOutgoing?.remove();dashboardSlideOutgoing=null;
 }
 function dashboardTvPresentation(enabled,advance=false){
   if(!enabled||dashboardLiveNeedsRender){dashboardTvPresentationStop();return;}
-  if(advance){
-    const content=document.getElementById('page');
-    if(content)content.dataset.tvTransition=content.dataset.tvTransition==='a'?'b':'a';
-  }
+  if(!advance)return;
+  const outgoing=dashboardSlideOutgoing,app=document.querySelector('.app');
+  if(!outgoing||!app||dashboardTvReducedMotion()){dashboardTvPresentationStop();return;}
+  const generation=dashboardSlideGeneration;
+  const options={duration:DASHBOARD_SLIDE_DURATION,easing:'cubic-bezier(.65,0,.35,1)',fill:'both'};
+  try{
+    dashboardSlideAnimations=[
+      outgoing.animate([{transform:'translate3d(0,0,0)'},{transform:'translate3d(-100%,0,0)'}],options),
+      app.animate([{transform:'translate3d(100%,0,0)'},{transform:'translate3d(0,0,0)'}],options)
+    ];
+    Promise.all(dashboardSlideAnimations.map(animation=>animation.finished)).then(()=>{
+      if(generation===dashboardSlideGeneration)dashboardTvPresentationStop();
+    }).catch(()=>{if(generation===dashboardSlideGeneration)dashboardTvPresentationStop();});
+  }catch(error){dashboardTvPresentationStop();}
 }
 function dashboardTvSlideshowStop(){
   clearTimeout(dashboardSlideTimer);dashboardSlideTimer=null;
@@ -331,11 +383,7 @@ function dashboardTvSlideshow(enabled){
       const variant=page==='home'?dashboardHomeSlide:dashboardOnlineSlide;
       const current=slides.findIndex(slide=>slide.page===page&&(slide.variant||'')===(variant||''));
       const next=slides[(current+1)%slides.length];
-      page=next.page;
-      if(page==='home')dashboardHomeSlide=next.variant||'';
-      else if(next.variant)dashboardOnlineSlide=next.variant;
-      render();
-      dashboardTvPresentation(true,true);
+      dashboardTvAdvance(next);
     }
     dashboardTvSlideshow(dashboardTvEnabled());
   },DASHBOARD_SLIDE_INTERVAL);

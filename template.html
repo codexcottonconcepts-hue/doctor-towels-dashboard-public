@@ -806,13 +806,10 @@ body.fit.salesviewer-tv .rhead{flex:0 0 auto;min-height:0;padding:3px 10px;gap:0
 body.fit.salesviewer-tv .rhead>.ttl,body.fit.salesviewer-tv .rhead>.account-profile{display:none!important}
 body.fit.salesviewer-tv .tv-current-date{display:block;font-size:13px;font-weight:700;line-height:20px;color:var(--ink)}
 body.fit.salesviewer-tv .tv-live-status:not([hidden]){display:block;margin-left:auto;font-size:11px;line-height:20px;color:var(--muted)}
-body.fit.salesviewer-tv #page[data-tv-transition="a"]{animation:tv-slide-in-a 600ms cubic-bezier(.22,.68,.18,1)}
-body.fit.salesviewer-tv #page[data-tv-transition="b"]{animation:tv-slide-in-b 600ms cubic-bezier(.22,.68,.18,1)}
-@keyframes tv-slide-in-a{from{opacity:.15;transform:translate3d(-6%,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
-@keyframes tv-slide-in-b{from{opacity:.15;transform:translate3d(-6%,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
-@media(prefers-reduced-motion:reduce){
-  body.fit.salesviewer-tv #page[data-tv-transition]{animation:none}
-}
+/* Temporary inert picture: the old panel exits left as the next enters right. */
+.tv-slide-outgoing{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;z-index:1000;pointer-events:none;background:#000;contain:layout paint;will-change:transform}
+body.fit.salesviewer-tv .app{will-change:transform}
+@media(prefers-reduced-motion:reduce){.tv-slide-outgoing{display:none}}
 body.fit.salesviewer-tv .body{flex:1 1 0;min-height:0;padding:8px 10px 10px;overflow:hidden}
 body.fit.salesviewer-tv .canvas{flex:1 1 0;min-height:0;gap:10px}
 body.fit.salesviewer-tv .cards{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:8px;flex:0 0 auto}
@@ -2697,6 +2694,7 @@ function renderSlicers(){
     if(page==='team')window.history.replaceState(null,'',executiveDetailUrl(F.exec));};
 }
 function render(){
+  dashboardTvBeforeRender();
   if(typeof resetOnlineCharts==='function')resetOnlineCharts();
   lfoChartObserver?.disconnect();lfoChartObserver=null;lfoChartSpecs=[];
   dashboardMonthObserver?.disconnect();dashboardMonthObserver=null;

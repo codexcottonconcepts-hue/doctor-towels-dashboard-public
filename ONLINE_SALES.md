@@ -35,10 +35,10 @@ daily periods are not manufactured from monthly-only figures.
 ## TV view
 
 The Salesviewer display rotates Company logo → Dashboard → Online Sales every ten
-seconds with a smooth slide transition. The company logo is centered on a black
+seconds with a full-screen right-to-left push over 1,000 milliseconds, with smooth easing and no fade. The company logo is centered on a black
 background with comfortable margins and no report header, date or menus. Its ordinary authenticated refresh updates
 data without resetting the active slide. Reduced-motion preferences disable the
-animation. Online access requires its page and section grants; identity-scoped
+animation. Temporary outgoing pictures are inert and removed on completion, fresh renders, slideshow stop or access failure. Online access requires its page and section grants; identity-scoped
 primary permissions do not imply access to aggregate platform sales.
 
 Administrators can review import status at `/admin/online-sales-sync`. Invalid

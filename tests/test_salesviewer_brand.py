@@ -87,8 +87,8 @@ dashboardTvSlideshow(true);tick();assert.equal(dashboardTvBrandVisible(),false);
         self.assertIn(".salesviewer-brand .rhead{display:none!important}", template)
         self.assertIn(".salesviewer-brand .app{padding:0}", template)
         self.assertIn("object-fit:contain", template)
-        self.assertIn("600ms cubic-bezier", template)
-        self.assertIn("translate3d(-6%,0,0)", template)
+        self.assertIn(".tv-slide-outgoing{position:fixed", template)
+        self.assertNotIn("translate3d(-6%,0,0)", template)
 
     def test_supplied_png_is_embedded_without_changes_or_asset_requests(self):
         import refresh
