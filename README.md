@@ -31,7 +31,7 @@ cloning this repository does not provide a running dashboard or any business dat
 - Independent sales creation, dispatch editing and export permissions.
 - Dashboard section grants and server-enforced data scopes.
 - Optional one-way spreadsheet imports with conflict detection.
-- Separate Online Sales storage and an automatic two-slide TV view.
+- Separate Online Sales storage and an automatic company/Dashboard/Online Sales TV view.
 
 Read [access controls](ACCESS_CONTROLS.md) and [Online Sales](ONLINE_SALES.md)
 before configuring accounts or enabling imports.

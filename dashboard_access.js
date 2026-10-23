@@ -148,6 +148,7 @@ function dashboardFitAccess(){
   // Presentation only: the normal policy still decides which data and widgets render.
   const tv=dashboardTvEnabled();
   document.body.classList.toggle('salesviewer-tv',tv);
+  document.body.classList.toggle('salesviewer-brand',tv&&dashboardTvBrandVisible());
   dashboardTvHeader(tv);
   dashboardTvLive(tv);
   dashboardTvSlideshow(tv);
@@ -194,6 +195,7 @@ function dashboardLiveStop(){
 function dashboardLiveClear(){
   if(typeof resetOnlineCharts==='function')resetOnlineCharts();
   dashboardTvPresentationStop();
+  document.body.classList.remove('salesviewer-brand');
   document.getElementById('page')?.replaceChildren();
   const tooltip=document.getElementById('tip');if(tooltip){tooltip.replaceChildren();tooltip.style.opacity=0;}
   dashboardLiveNeedsRender=true;
@@ -269,9 +271,23 @@ function dashboardTvEnabled(){
 /* The slides only render the already-authorized payload. Polling remains the
    sole data request, and an unconfirmed response pauses all slide changes. */
 const DASHBOARD_SLIDE_INTERVAL=10000;
-let dashboardSlideTimer=null,dashboardOnlineSlide='combined';
+let dashboardSlideTimer=null,dashboardOnlineSlide='combined',dashboardHomeSlide='brand',dashboardSlideStarted=false;
+function dashboardTvPrepareSlide(){
+  if(dashboardSlideStarted||!dashboardTvEnabled()||!dashboardUsablePage('home'))return;
+  dashboardSlideStarted=true;dashboardHomeSlide='brand';page='home';
+}
+function dashboardTvBrandVisible(){
+  return dashboardTvEnabled()&&page==='home'&&dashboardHomeSlide==='brand'&&dashboardUsablePage('home');
+}
+function dashboardTvBrandMarkup(){
+  return `<section class="tv-brand-slide" aria-label="Doctor Towels company logo">${
+    TV_BRAND_IMAGE.startsWith('data:image/png;base64,')
+      ?`<img src="${TV_BRAND_IMAGE}" alt="Doctor Towels — It's safe" width="1707" height="960">`
+      :'<span>Doctor Towels</span>'}</section>`;
+}
 function dashboardTvSlideOptions(){
-  const slides=[{page:'home',variant:null,label:'Dashboard',action:'Show Dashboard'}];
+  const slides=[{page:'home',variant:'brand',label:'Doctor Towels',action:'Show Doctor Towels'},
+                {page:'home',variant:null,label:'Dashboard',action:'Show Dashboard'}];
   if(['online_summary','online_platforms','online_trend'].some(key=>dashboardCan('widgets',key)))
     slides.push({page:'online',variant:'combined',label:'Online Sales',action:'Show Online Sales'});
   return slides;
@@ -281,7 +297,9 @@ function dashboardTvShowSlide(nextPage,nextVariant=''){
   const next=dashboardTvSlideOptions().find(slide=>slide.page===nextPage&&(slide.variant||'')===nextVariant);
   if(!next||!dashboardUsablePage(next.page))return false;
   dashboardTvSlideshowStop();
-  page=next.page;if(next.variant)dashboardOnlineSlide=next.variant;
+  page=next.page;
+  if(page==='home')dashboardHomeSlide=next.variant||'';
+  else if(next.variant)dashboardOnlineSlide=next.variant;
   render();dashboardTvPresentation(true,true);dashboardTvSlideshow(true);
   return true;
 }
@@ -310,9 +328,13 @@ function dashboardTvSlideshow(enabled){
     if(!dashboardLiveActive)return;
     if(!document.hidden&&!dashboardLiveNeedsRender){
       const slides=dashboardTvSlideOptions();
-      const current=slides.findIndex(slide=>slide.page===page&&(page!=='online'||slide.variant===dashboardOnlineSlide));
+      const variant=page==='home'?dashboardHomeSlide:dashboardOnlineSlide;
+      const current=slides.findIndex(slide=>slide.page===page&&(slide.variant||'')===(variant||''));
       const next=slides[(current+1)%slides.length];
-      page=next.page;if(next.variant)dashboardOnlineSlide=next.variant;render();
+      page=next.page;
+      if(page==='home')dashboardHomeSlide=next.variant||'';
+      else if(next.variant)dashboardOnlineSlide=next.variant;
+      render();
       dashboardTvPresentation(true,true);
     }
     dashboardTvSlideshow(dashboardTvEnabled());

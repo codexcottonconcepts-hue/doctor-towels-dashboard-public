@@ -34,8 +34,9 @@ daily periods are not manufactured from monthly-only figures.
 
 ## TV view
 
-The Salesviewer display rotates between Dashboard and Online Sales every ten
-seconds with a smooth slide transition. Its ordinary authenticated refresh updates
+The Salesviewer display rotates Company logo → Dashboard → Online Sales every ten
+seconds with a smooth slide transition. The company logo is centered on a black
+background with comfortable margins and no report header, date or menus. Its ordinary authenticated refresh updates
 data without resetting the active slide. Reduced-motion preferences disable the
 animation. Online access requires its page and section grants; identity-scoped
 primary permissions do not imply access to aggregate platform sales.

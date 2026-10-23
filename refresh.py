@@ -611,6 +611,7 @@ def render_html(data):
         module = io.open(os.path.join(HERE, filename), encoding="utf-8").read()
         tpl = tpl.replace(marker, module)
     tpl = tpl.replace("<!--__FAVICON__-->", favicon_link(), 1)
+    tpl = tpl.replace("/*__SALESVIEWER_BRAND__*/", png_uri("salesviewer-brand.png"))
     if "/*__DATA__*/" not in tpl:
         sys.exit("FAILED: template.html has no /*__DATA__*/ placeholder.")
     # Imported names must remain JSON values, including a literal </script>.
