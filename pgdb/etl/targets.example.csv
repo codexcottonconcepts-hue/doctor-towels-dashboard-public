@@ -1,0 +1,3 @@
+period_month,metric,channel,sub_channel,person,state,district,city,brand,target_value,is_rollup,notes
+2026-04-01,primary_taxable,LFO,,,,,,,1000.00,Y,Fictional demonstration target; replace with your own private plan
+2026-04-01,primary_taxable,L-LFO,,,,,,,2000.00,Y,Fictional demonstration target; replace with your own private plan

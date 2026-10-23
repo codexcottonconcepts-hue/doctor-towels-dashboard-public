@@ -1,0 +1,56 @@
+# Credentials and runtime configuration
+.env
+.env.*
+!.env.example
+database.url*
+pgdb/.deploy.url*
+session.key*
+users.db*
+*.key
+*.pem
+credentials*.json
+*-credentials.json
+*service-account*.json
+*-sync.json
+!*-sync.example.json
+
+# Generated data, reports, databases, logs and old releases
+*.db
+*.db-*
+*.sqlite*
+*.xlsx
+*.xls
+*.csv
+!*.example.csv
+*.dump
+*.backup
+*.bak
+*.pre-*
+*.log
+snapshot.json
+dashboard.html
+public/index.html
+outputs/
+backups/
+logs/
+.code-updates/
+.local-postgres/
+.qa-*/
+.local-test/
+.database.url.*.tmp
+.postgres-setup-result.json
+
+# Local tooling and build caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Live business datasets stay private. Only explicitly named examples are public.
+catalog/*.json
+!catalog/*.example.json
+pgdb/etl/targets_FY*.csv

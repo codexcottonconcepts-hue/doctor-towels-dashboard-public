@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "source_filename": "fictional-demo-data",
+  "source_sheet": "Demo Products",
+  "description": "Fictional examples for development; these are not business prices.",
+  "tax_basis": "inclusive",
+  "gst_rate": "18.00",
+  "price_columns": ["common_mrp", "north_retail", "gifting", "lulu_retail"],
+  "products": [
+    {
+      "catalog_key": "DEMO-001",
+      "product_name": "Demo Bath Towel",
+      "unit": "pcs",
+      "mrp": "118.00",
+      "prices": {
+        "common_mrp": "118.00",
+        "north_retail": "106.20",
+        "gifting": "94.40",
+        "lulu_retail": "82.60"
+      }
+    },
+    {
+      "catalog_key": "DEMO-002",
+      "product_name": "Demo Hand Towel",
+      "unit": "pcs",
+      "mrp": "59.00",
+      "prices": {
+        "common_mrp": "59.00",
+        "north_retail": "47.20",
+        "gifting": null,
+        "lulu_retail": null
+      }
+    }
+  ]
+}

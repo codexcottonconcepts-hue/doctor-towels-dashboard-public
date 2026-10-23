@@ -1,0 +1,3 @@
+# Loaders only. The web app has its own requirements.txt one level up.
+openpyxl>=3.1          # reads the .xlsx workbooks
+psycopg2-binary>=2.9   # PostgreSQL driver

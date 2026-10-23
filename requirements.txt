@@ -1,0 +1,14 @@
+# Dashboard web app
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9      # FastAPI Form() parsing for the login and user forms
+itsdangerous>=2.1            # signs the session cookie (Starlette SessionMiddleware)
+
+# Used by refresh.py to read the Google Sheet workbooks
+requests>=2.31
+openpyxl>=3.1
+
+# The PostgreSQL source (pgdata.py). Needed whenever DATABASE_URL is set;
+# harmless when it is not -- pgdata imports it defensively and the sheet
+# path keeps working without it.
+psycopg2-binary>=2.9

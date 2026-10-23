@@ -1,0 +1,85 @@
+/* Native selects remain the form fields; these controls provide a shared UI. */
+.dt-select{position:relative;display:block;width:100%;min-width:0;text-align:left}
+.dt-select select.dt-select-native{
+  position:absolute!important;inset:0 auto auto 0!important;width:1px!important;
+  height:1px!important;min-height:0!important;padding:0!important;margin:0!important;
+  border:0!important;opacity:0!important;pointer-events:none!important;
+  clip-path:inset(50%)!important;overflow:hidden!important;
+}
+.dt-select .dt-select-trigger{
+  all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;
+  width:100%;min-width:0;min-height:44px;padding:10px 13px;border:1px solid transparent;
+  border-radius:9px;background:#e9edf2;color:#536780;cursor:pointer;
+  font-family:inherit;font-size:13px;font-weight:500;line-height:1.4;text-align:left;
+  transition:background .14s,border-color .14s,box-shadow .14s;
+}
+.dt-select .dt-select-trigger:hover{background:#e1e7ef}
+.dt-select .dt-select-trigger:focus-visible{
+  outline:2px solid #cf1760;outline-offset:3px;
+}
+.dt-select .dt-select-trigger[aria-expanded=true]{background:#e2e8f0;box-shadow:0 1px 3px #26395712}
+.dt-select .dt-select-trigger:disabled{cursor:default;background:#f0f2f5;color:#8a96a8}
+.dt-select .dt-select-trigger[aria-invalid=true]{border-color:#c8102e}
+.dt-select .dt-select-icon,.dt-select .dt-select-chevron{
+  display:block;flex:0 0 auto;width:18px;height:18px;color:#8ba1bf;pointer-events:none;
+}
+.dt-select .dt-select-chevron{width:15px;height:15px;margin-left:auto;transition:transform .14s}
+.dt-select .dt-select-trigger[aria-expanded=true] .dt-select-chevron{transform:rotate(180deg)}
+.dt-select .dt-select-value{display:block;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dt-select .dt-select-error{display:block;color:#b5122d;font-size:12px;line-height:1.4;margin-top:5px}
+.dt-select .dt-select-error:empty{display:none}
+.dt-select-menu{
+  box-sizing:border-box;position:fixed;z-index:10050;margin:0;padding:7px;
+  border:1px solid #edf0f5;border-radius:13px;background:#fff;
+  box-shadow:0 12px 28px #23334c22,0 3px 8px #23334c12;
+  color:#384c68;font-family:inherit;font-size:14px;line-height:1.4;text-align:left;
+}
+.dt-select-menu[hidden]{display:none!important}
+.dt-select-menu .dt-select-options{
+  box-sizing:border-box;overflow:auto;overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:#c9d5e4 transparent;scrollbar-gutter:stable;
+}
+.dt-select-options::-webkit-scrollbar{width:7px;height:7px}
+.dt-select-options::-webkit-scrollbar-thumb{border-radius:10px;background:#c9d5e4;border:1px solid #fff}
+.dt-select-options::-webkit-scrollbar-track{background:transparent}
+.dt-select-menu .dt-select-option{
+  box-sizing:border-box;display:flex;align-items:center;min-height:38px;
+  padding:9px 12px;border-radius:7px;cursor:pointer;overflow-wrap:anywhere;
+  font-weight:500;line-height:1.45;margin:0;
+}
+.dt-select-menu .dt-select-option.is-active{background:#f0f3f7}
+.dt-select-menu .dt-select-option[aria-selected=true]{color:#ed0061;background:#fdf1f7}
+.dt-select-menu .dt-select-option.is-active[aria-selected=true]{background:#fbe8f1}
+.dt-select-menu .dt-select-option[aria-disabled=true]{color:#9ca8b7;cursor:default;background:transparent}
+.dt-select-menu .dt-select-group{padding:9px 12px 4px;color:#8996a9;font-size:11px;font-weight:600}
+.dt-select-menu .dt-select-empty{padding:12px;color:#8996a9}
+.dt-select-menu.is-multiple{display:flex;flex-direction:column;max-height:calc(100vh - 16px)}
+.dt-select-menu.is-multiple .dt-select-options{min-height:0}
+.dt-select-menu.is-multiple .dt-select-option{gap:10px}
+.dt-select-menu .dt-select-option-label{min-width:0;flex:1}
+.dt-select-menu .dt-select-check{
+  box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+  width:17px;height:17px;flex:0 0 17px;border:1.5px solid #b4c0d0;border-radius:4px;background:#fff;
+}
+.dt-select-menu .dt-select-checkmark{width:13px;height:13px;visibility:hidden}
+.dt-select-menu .dt-select-option[aria-selected=true] .dt-select-check{border-color:#d91660;background:#d91660;color:#fff}
+.dt-select-menu .dt-select-option[aria-selected=true] .dt-select-checkmark{visibility:visible}
+.dt-select-menu .dt-select-option[aria-disabled=true] .dt-select-check{opacity:.45}
+.dt-select-menu .dt-select-multi-hint{padding:5px 9px 9px;color:#78879b;font-size:11px;flex-shrink:0}
+.dt-select-menu .dt-select-actions{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #e9edf3;margin-top:6px;padding:9px 5px 3px;flex-shrink:0}
+.dt-select-menu .dt-select-actions button{
+  all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;
+  padding:8px 12px;border-radius:6px;font-family:inherit;font-size:12px;font-weight:600;
+  cursor:pointer;line-height:1.4;min-height:34px;
+}
+.dt-select-menu .dt-select-actions .dt-select-reset{color:#65758b}
+.dt-select-menu .dt-select-actions .dt-select-reset:hover{background:#f0f3f7}
+.dt-select-menu .dt-select-actions .dt-select-apply{background:#cf1760;color:#fff}
+.dt-select-menu .dt-select-actions .dt-select-apply:hover{background:#ab1150}
+.dt-select-menu .dt-select-actions button:focus-visible{outline:2px solid #cf1760;outline-offset:2px}
+.dt-select-search{display:block;width:calc(100% - 20px);margin:5px 10px 8px;padding:8px;border:1px solid #dbe3ee;border-radius:5px;font:inherit;font-size:12px}
+.dt-select-search:focus-visible{outline:2px solid #c8102e55}
+.slicers .slicer:has(.dt-select){padding:0;border:0;background:transparent;gap:3px;min-width:116px;max-width:300px}
+.slicers .slicer:has(.dt-select)>label{padding-left:3px}
+.slicers .dt-select .dt-select-trigger{min-height:37px;padding:8px 10px;gap:8px;font-size:12.5px}
+@media(prefers-reduced-motion:reduce){.dt-select .dt-select-trigger,.dt-select .dt-select-chevron{transition:none}}
