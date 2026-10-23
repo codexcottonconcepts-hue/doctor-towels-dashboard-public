@@ -11,10 +11,10 @@ import refresh
 
 
 class ApplicationFontTests(unittest.TestCase):
-    def test_override_changes_only_family_including_controls_svg_and_pseudo_text(self):
+    def test_family_override_covers_controls_svg_and_pseudo_text(self):
         css = (ROOT / "application_fonts.css").read_text(encoding="utf-8")
         css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-        selector, declarations = css.strip().rstrip("}").split("{", 1)
+        selector, declarations = css.split("}", 1)[0].strip().split("{", 1)
         self.assertEqual([item.strip() for item in selector.split(",")],
                          ["html", "body", "body *", "body *::before", "body *::after"])
         properties = [part.split(":", 1)[0].strip() for part in declarations.split(";") if part.strip()]

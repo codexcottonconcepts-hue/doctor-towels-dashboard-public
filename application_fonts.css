@@ -1,5 +1,69 @@
-/* One family across dashboards, charts, forms, reports and account controls.
-   Keep every existing font size, weight, colour and layout declaration. */
+/* Online Sales typography across the application. Presentation roles only:
+   colours, card shapes, grids, chart geometry and application logic stay local. */
 html,body,body *,body *::before,body *::after{
   font-family:"Satoshi","Satoshi Variable",system-ui,-apple-system,sans-serif!important;
+}
+html,body{
+  font-size:16px!important;font-weight:400!important;line-height:1.5!important;
+  letter-spacing:.01em!important;
+}
+body *{font-weight:400!important}
+body :is(b,strong,th,legend,label,h1,h2,h3,h4,h5,h6){font-weight:500!important}
+/* The shared header already has the Online Sales sizing. Keep that compact
+   typography so the existing filters and tabs remain on their original row. */
+body :is(.rhead,.bar){font-size:14px!important;line-height:1.45!important;letter-spacing:normal!important}
+body :is(.rhead,.bar) button{font-weight:500!important}
+body .rhead h1{font-size:19px!important;font-weight:500!important;line-height:1.15!important;letter-spacing:.01em!important}
+body .rhead h1 .u{font-size:11.5px!important;font-weight:400!important;line-height:1.15!important;letter-spacing:normal!important}
+body .rhead .asof{font-size:10px!important;font-weight:400!important;line-height:1.3!important;letter-spacing:normal!important}
+body .rhead .slicer label{font-size:10px!important;font-weight:500!important;line-height:1.45!important;letter-spacing:normal!important}
+body .rhead .dt-select-trigger{font-size:12.5px!important;font-weight:500!important;line-height:1.4!important;letter-spacing:normal!important}
+body .rhead .views :is(button,.plan-link){font-size:11.5px!important;font-weight:500!important;line-height:1.45!important;letter-spacing:normal!important}
+body h2{font-size:16px!important;line-height:1.4!important;letter-spacing:.01em!important}
+body :is(h3,h4,h5,h6),body .vis h3{
+  font-size:12px!important;font-weight:500!important;line-height:1.4!important;
+  letter-spacing:.04em!important;
+}
+body :is(input,select,textarea,button,.dt-select-trigger,.dt-select-option,.dt-select-search):not(.rhead *):not(.bar *):not(.comparison-name){
+  font-size:14px!important;font-weight:400!important;line-height:1.4!important;
+  letter-spacing:.01em!important;
+}
+body :is(label,legend,.lab):not(.rhead *):not(.bar *){
+  font-size:12px!important;font-weight:500!important;line-height:1.3!important;
+  letter-spacing:.04em!important;
+}
+body .kcard .val,body .kcard .val *{
+  font-size:28px!important;font-weight:500!important;line-height:1.2!important;
+  letter-spacing:-.035em!important;
+}
+body :is(.kfoot,.kfoot *,.note,.muted,.cred,.cred *,.foot,
+          .online-notice,.online-period,.online-source){
+  font-size:12px!important;font-weight:400!important;line-height:1.4!important;
+  letter-spacing:.02em!important;
+}
+body :is(table,td,th){font-size:12px!important;line-height:normal!important;letter-spacing:.02em!important}
+body th{letter-spacing:.04em!important}
+body :is(th,th *,tr.tot td,tr.tot td *,tfoot,tfoot *){font-weight:500!important}
+body :is(.nav button,.views button,.views .plan-link,.team-breakup-actions a,
+          .retailer-view-tabs button,.entry-tab,.entry-btn,.tag):not(.rhead *):not(.bar *){
+  font-size:12px!important;font-weight:500!important;line-height:1.4!important;
+  letter-spacing:.04em!important;
+}
+body :is(.leg,.leg *,.comparison-column-value,.comparison-attainment,
+          .dlegend,.dlegend *,.mleg .tx,.cl,.tk,.dl){
+  font-size:12px!important;font-weight:500!important;line-height:1.4!important;
+  letter-spacing:.01em!important;
+}
+:is(#page,.tv-slide-outgoing) .comparison-name{font-size:12px}
+body .comparison-name{font-weight:500!important;line-height:1.4!important;letter-spacing:.01em!important}
+body svg text{font-weight:500!important}
+body .online-platform-key{font-weight:500!important}
+body :is(.account-profile,.profile-name,.profile-role,.profile-link,.profile-trigger){font-weight:500!important}
+body .tv-current-date{font-size:13px!important;font-weight:700!important}
+@media(max-width:700px){
+  body .kcard .val,body .kcard .val *{font-size:24px!important}
+}
+@media(max-width:1180px),(max-height:650px){
+  body.salesviewer-tv .kcard .val,body.salesviewer-tv .kcard .val *{font-size:24px!important}
+  body.salesviewer-tv :is(.lab,.kfoot,.kfoot *,.online-source,.online-period,.note){font-size:10px!important}
 }
