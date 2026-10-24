@@ -50,10 +50,22 @@ body :is(.nav button,.views button,.views .plan-link,.team-breakup-actions a,
   letter-spacing:.04em!important;
 }
 body :is(.leg,.leg *,.comparison-column-value,.comparison-attainment,
-          .dlegend,.dlegend *,.mleg .tx,.cl,.tk,.dl){
+          .dlegend,.dlegend *,.mleg .tx){
   font-size:12px!important;font-weight:500!important;line-height:1.4!important;
   letter-spacing:.01em!important;
 }
+/* SVG renderers reserve different label sizes for dense, compact charts.
+   Keep their sizes so category names and order counts do not collide. */
+body :is(.cl,.tk,.dl){
+  font-weight:500!important;line-height:1.4!important;letter-spacing:.01em!important;
+}
+/* Five range names share a compact plot; leave space between neighbours.
+   The final text in each band is its count and retains its renderer size. */
+body:not(.salesviewer-tv) [data-dashboard-widget="order_bands"] svg a text.tk:not(:last-child){font-size:8.5px!important}
+/* A full financial year needs compact month names in the narrow trend card. */
+body:not(.salesviewer-tv) [data-dashboard-widget="sales_trend"] svg text.tk[text-anchor="middle"]{font-size:8.5px!important}
+/* The TV's two large charts already fit 12px labels. Preserve that view. */
+body.salesviewer-tv svg :is(.cl,.tk,.dl){font-size:12px!important}
 :is(#page,.tv-slide-outgoing) .comparison-name{font-size:12px}
 body .comparison-name{font-weight:500!important;line-height:1.4!important;letter-spacing:.01em!important}
 body svg text{font-weight:500!important}
