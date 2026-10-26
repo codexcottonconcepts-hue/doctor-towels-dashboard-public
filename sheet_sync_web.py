@@ -57,6 +57,9 @@ def issue_label(issue):
         "invalid_financial_year": "The invoice financial year is outside the supported range.",
         "ambiguous_legacy_match": "More than one existing sales entry may match this row. Review the existing entry before retrying.",
         "existing_invoice_requires_review": "This invoice already exists under a different or protected entry. Review its S.NO and existing link.",
+        "ambiguous_source_identity": "S.NO changed, but more than one invoice line could match. Restore the previous S.NO or review the repeated invoice lines.",
+        "source_key_collision": "S.NO changed and would replace another saved invoice link. Restore unique original S.NO values or review the affected rows.",
+        "source_key_relinked": "S.NO changed. Its existing invoice link was safely restored; no duplicate sale was created.",
         "conflicting_master_value": "A linked master record has conflicting values. Review the source and saved record.",
         "unmatched_legacy_rows": "Some existing imported entries could not be linked. Check for missing rows or changed invoice identifiers.",
         "database_row_deleted": "The linked sales entry was deleted in the dashboard and was not restored.",
@@ -105,7 +108,7 @@ def register(app, current_user, login_redirect, page, manager, invalidate):
         token = request.session.setdefault("sales_sync_csrf", secrets.token_urlsafe(32))
         labels = {"source_rows": "Valid billed rows", "source_total_rows": "Nonempty source rows",
                   "invoice_rows": "Rows with an invoice number", "ignored_blank_rows": "Empty pre-numbered rows ignored",
-                  "attached": "Existing entries linked", "inserted": "New entries added",
+                  "attached": "Existing entries linked", "relinked": "Renumbered rows re-linked", "inserted": "New entries added",
                   "updated": "Entries updated", "unchanged": "Unchanged", "preserved_local": "Local edits preserved",
                   "bootstrap_preserved": "Existing corrections preserved", "conflicts": "Conflicts", "missing_source": "Linked rows missing from source"}
         rows = ''.join(f'<tr><th>{label}</th><td>{int(status["counters"].get(key, 0))}</td></tr>' for key, label in labels.items())
@@ -126,8 +129,9 @@ def register(app, current_user, login_redirect, page, manager, invalidate):
                            + (f'<h3>Issues to correct</h3><ul>{failure_issues}</ul>' if failure_issues else '')
                            + (f'<h3>Ignored empty rows</h3><ul>{ignored}</ul>' if ignored else '') + '</div>')
             current_issues = []
-        notes = issue_list([issue for issue in current_issues if isinstance(issue, dict) and issue.get("code") == "serial_only_placeholder"])
-        issues = issue_list([issue for issue in current_issues if not isinstance(issue, dict) or issue.get("code") != "serial_only_placeholder"])
+        note_codes = {"serial_only_placeholder", "source_key_relinked"}
+        notes = issue_list([issue for issue in current_issues if isinstance(issue, dict) and issue.get("code") in note_codes])
+        issues = issue_list([issue for issue in current_issues if not isinstance(issue, dict) or issue.get("code") not in note_codes])
         completed = (f'<table>{rows}</table>' if status.get("last_success") else '<p>No Direct Sales sync has completed yet.</p>')
         completed += f'<h3>Issues to review</h3><ul>{issues}</ul>' if issues else ''
         completed += f'<h3>Notes from this import</h3><ul>{notes}</ul>' if notes else ''
@@ -168,6 +172,7 @@ def register(app, current_user, login_redirect, page, manager, invalidate):
                 f'{attempt}<div class="card"><h2>Last completed sync</h2>{completed}</div>'
                 f'{lfo_notice}{llfo_notice}'
                 '<div class="card"><h2>How to update sales</h2><p>Add or edit rows in Google Sheets. Give each new row a unique S.NO and keep existing S.NO values unchanged, including when sorting rows.</p>'
+                '<p>If S.NO values are renumbered, existing invoice links are restored only when the accepted invoice details and brand identify each row uniquely. Amount and executive changes still use the normal conflict checks. Repeated or uncertain invoice lines require review and are never duplicated automatically.</p>'
                 '<p>A pre-numbered row is ignored only when every other worksheet cell is empty. Any invoice details, amounts or other content make it a row that must pass validation, including having an invoice number. Duplicate S.NO values on billed rows stop the Direct Sales import.</p>'
                 '<p>Sheet changes update matching PostgreSQL entries. Entries created in the dashboard are kept separate. Local corrections are retained; changes to the same field in both places require review.</p>'
                 '<p>Removing a sheet row does not delete its PostgreSQL entry. Use the authorized sales-entry Delete action for intentional deletion. Primary channel targets remain managed in Targets. Secondary distributor and branch targets come from LFO Distributed; changes to Primary targets do not change Secondary targets.</p></div>')

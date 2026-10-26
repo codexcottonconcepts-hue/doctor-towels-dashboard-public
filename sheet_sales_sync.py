@@ -212,6 +212,88 @@ def fingerprint(payload):
     return hashlib.sha256(json.dumps(canonical(payload), sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def reconcile_source_keys(resolved, links):
+    """Plan one-to-one S.NO moves against accepted source data, never live edits.
+
+    Sheets may renumber S.NO after deleting blank rows. Reserve unchanged links
+    first, then match complete accepted payloads. Amount and executive changes
+    are allowed only when all other fields agree and that identity is unique
+    in both complete sets. Ambiguous invoice lines remain for review.
+    """
+    sources = {key: canonical(payload) for key, payload in resolved}
+    baselines = {key: canonical(link['source_payload']) for key, link in links.items()}
+
+    def nonfinancial_identity(payload):
+        if not all(payload.get(field) for field in
+                   ('invoice_no', 'brand_id', 'invoice_date', 'customer_id', 'channel_id')):
+            return None
+        return fingerprint({field: value for field, value in payload.items()
+                            if field not in (*NUMERIC_FIELDS, 'person_id')})
+
+    assigned, remaining = {}, set(links)
+    for key, source in sources.items():
+        if key in baselines and source == baselines[key]:
+            assigned[key] = key
+            remaining.remove(key)
+    # Retain a stable S.NO with ordinary amount edits before looking at new
+    # serials; an additional SKU must not steal an existing line's identity.
+    for key, source in sources.items():
+        if key not in assigned and key in remaining:
+            signature = nonfinancial_identity(source)
+            if signature is not None and signature == nonfinancial_identity(baselines[key]):
+                assigned[key] = key
+                remaining.remove(key)
+    by_payload, source_payloads = defaultdict(list), defaultdict(list)
+    for old in remaining:
+        by_payload[fingerprint(baselines[old])].append(old)
+    for key, source in sources.items():
+        if key not in assigned:
+            source_payloads[fingerprint(source)].append(key)
+    errors = []
+    for signature, keys in source_payloads.items():
+        candidates = by_payload.get(signature, [])
+        if not candidates:
+            continue
+        if len(keys) != 1 or len(candidates) != 1:
+            errors.extend({'source_key': key, 'code': 'ambiguous_source_identity'} for key in keys)
+            continue
+        assigned[keys[0]] = candidates[0]
+        remaining.remove(candidates[0])
+
+    by_identity, source_identities = defaultdict(list), defaultdict(list)
+    for old, baseline in baselines.items():
+        signature = nonfinancial_identity(baseline)
+        if signature is not None:
+            by_identity[signature].append(old)
+    for key, source in sources.items():
+        signature = nonfinancial_identity(source)
+        if signature is not None:
+            source_identities[signature].append(key)
+    for signature, keys in source_identities.items():
+        candidates = by_identity.get(signature, [])
+        if len(keys) == len(candidates) == 1:
+            key, old = keys[0], candidates[0]
+            if key not in assigned and old in remaining:
+                assigned[key] = old
+                remaining.remove(old)
+        elif any(old in remaining for old in candidates):
+            # Existing same-key financial edits still use the normal merge.
+            # A new serial cannot guess which repeated invoice line it is.
+            errors.extend({'source_key': key, 'code': 'ambiguous_source_identity'}
+                          for key in keys if key not in assigned and key not in links)
+    moves = [(old, key, links[old]['entry_id']) for key, old in assigned.items() if old != key]
+    moved_keys = {old for old, _, _ in moves}
+    for old, new, _ in moves:
+        if new in links and new not in moved_keys:
+            errors.append({'source_key': new, 'code': 'source_key_collision'})
+    if errors:
+        raise SyncValidationError(errors)
+    remapped = {key: dict(link) for key, link in links.items() if key not in moved_keys}
+    for old, new, _ in moves:
+        remapped[new] = {**links[old], 'source_key': new}
+    return remapped, moves
+
+
 def merge_payload(baseline, source, current):
     """Merge independent field edits, keeping same-field conflicts for review."""
     baseline, source, current = map(canonical, (baseline, source, current))
@@ -307,7 +389,7 @@ def sync_workbook(workbook, source_id, conn, dry_run=False):
     diagnostics = {}
     rows = parse_workbook(workbook, diagnostics=diagnostics)
     result = dict(source_rows=len(rows), attached=0, bootstrap_preserved=0, inserted=0,
-                  updated=0, unchanged=0, preserved_local=0, conflicts=0, missing_source=0,
+                  updated=0, unchanged=0, preserved_local=0, conflicts=0, missing_source=0, relinked=0,
                   source_total_rows=diagnostics['source_rows'], invoice_rows=diagnostics['invoice_rows'],
                   ignored_blank_rows=diagnostics['ignored_blank_rows'],
                   dry_run=bool(dry_run), issues=[{'code': 'serial_only_placeholder', **row}
@@ -326,6 +408,13 @@ def sync_workbook(workbook, source_id, conn, dry_run=False):
             cur.execute('select * from aux.sheet_sales_row' + ('' if dry_run else ' for update'))
             all_links = list(cur.fetchall())
             links = {r['source_key']: r for r in all_links if r['source_id'] == source_id}
+            try:
+                links, key_moves = reconcile_source_keys(resolved, links)
+            except SyncValidationError as exc:
+                raise SyncValidationError(exc.issues, diagnostics=diagnostics) from None
+            result['relinked'] = len(key_moves)
+            result['issues'].extend({'source_key': new, 'previous_source_key': old,
+                                     'code': 'source_key_relinked'} for old, new, _ in key_moves)
             claimed = {r['entry_id'] for r in all_links}
             cur.execute('select * from txn.sales_entry order by entry_id' + ('' if dry_run else ' for update'))
             existing = {r['entry_id']: dict(r) for r in cur.fetchall()}
@@ -402,6 +491,23 @@ def sync_workbook(workbook, source_id, conn, dry_run=False):
                 raise SyncValidationError(errors, diagnostics=diagnostics)
             if dry_run:
                 return result
+            # Stage moves before final keys so swaps and longer renumbering
+            # cycles respect the unique source key constraint atomically.
+            temporary = []
+            for old, new, entry_id in key_moves:
+                temp = '__sync_rekey__' + str(entry_id)
+                if temp in links:
+                    raise SyncValidationError([{'source_key': new, 'code': 'source_key_collision'}])
+                cur.execute('update aux.sheet_sales_row set source_key=%s where source_id=%s and source_key=%s and entry_id=%s',
+                            (temp, source_id, old, entry_id))
+                if cur.rowcount != 1:
+                    raise SyncValidationError([{'source_key': new, 'code': 'source_key_collision'}])
+                temporary.append((temp, new, entry_id))
+            for temp, new, entry_id in temporary:
+                cur.execute('update aux.sheet_sales_row set source_key=%s where source_id=%s and source_key=%s and entry_id=%s',
+                            (new, source_id, temp, entry_id))
+                if cur.rowcount != 1:
+                    raise SyncValidationError([{'source_key': new, 'code': 'source_key_collision'}])
             for action, key, source, entry_id, changes in plan:
                 if action == 'insert':
                     cur.execute('select pg_advisory_xact_lock(hashtext(lower(%s)), %s)', (source['invoice_no'], source['brand_id']))
@@ -423,4 +529,10 @@ def sync_workbook(workbook, source_id, conn, dry_run=False):
                     cur.execute(f"update txn.sales_entry set {','.join(f'{f}=%s' for f in changes)} where entry_id=%s", [*changes.values(), entry_id])
                 cur.execute('insert into aux.sheet_sales_row(source_id,source_key,entry_id,source_payload,source_fingerprint) values (%s,%s,%s,%s,%s) on conflict (source_id,source_key) do update set source_payload=excluded.source_payload,source_fingerprint=excluded.source_fingerprint,checked_at=now()',
                             (source_id, key, entry_id, Json(source), fingerprint(source)))
+    if key_moves:
+        # Only committed, non-financial identifiers are recorded in the normal
+        # server log; failed transactions must never claim a completed repair.
+        print(json.dumps({'event': 'direct_sales_source_keys_relinked',
+                          'moves': [{'previous_source_key': old, 'source_key': new,
+                                     'entry_id': entry_id} for old, new, entry_id in key_moves]}), flush=True)
     return result
