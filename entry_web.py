@@ -20,6 +20,7 @@ import dashboard_policy as dp
 import pgdata
 import invoice_items
 import invoice_ui
+import pi_numbers
 import customer_details
 import customer_ui
 from entry_dates import parse_date, format_date
@@ -305,8 +306,6 @@ def parse_entry(form):
         if len(value) > maximum:
             raise EntryError(f"{key.replace('_', ' ').title()} is too long (maximum {maximum} characters).")
         out[key] = value or None
-    if not out["invoice_no"]:
-        raise EntryError("Enter the invoice number.")
     out['weight_kg'] = parse_weight(form.get('weight_kg'))
     out['transport_service'] = parse_transport_service(form.get('transport_service'))
     for key in ("invoice_date", "stock_supplied_on"):
@@ -441,6 +440,9 @@ def save_entry(form, username, user=None):
                 original.update(invoice_form_values(existing_invoice))
             merged = restricted_form(form, user, original)
             assert_entry_channel(cur, merged.get('channel_id'), user)
+            # PI identity belongs to the server. New forms get the next number
+            # after validation; historical PIs (including NULL) stay unchanged.
+            merged['pi_number'] = (original.get('pi_number') or '') if original else ''
             edit_values = field_edit_access(user, 'values', 'invoice_items', existing=original is not None)
             product_mode = merged.get('entry_mode') == 'invoice'
             if edit_values and product_mode:
@@ -470,7 +472,7 @@ def save_entry(form, username, user=None):
                 old_dimensions = {key: original[key] for key in DIMENSIONS}
                 old_courier = old_dimensions["courier_id"]
                 data['line_no'] = original['line_no']
-                allocate_number = not (original['invoice_no'].lower() == data['invoice_no'].lower() and old_dimensions['brand_id'] == data['brand_id'])
+                allocate_number = not ((original.get('invoice_no') or '').casefold() == (data.get('invoice_no') or '').casefold() and old_dimensions['brand_id'] == data['brand_id'])
                 if not data["revision"] or (original['updated_at'] or original['created_at']).isoformat() != data["revision"]:
                     raise EntryError("Another user changed this entry. Reload it before saving your changes.")
                 if original['payment_received_on'] and data['stock_supplied_on'] and data['stock_supplied_on'] > original['payment_received_on']:
@@ -523,7 +525,15 @@ def save_entry(form, username, user=None):
                         data['sub_channel_id'], username)
                 except customer_details.CustomerError as exc:
                     raise EntryError(str(exc)) from None
-            if allocate_number:
+            if not data['entry_id']:
+                try:
+                    data['pi_number'] = pi_numbers.allocate_next(cur, fy)
+                except pi_numbers.PIError as exc:
+                    raise EntryError(str(exc)) from None
+            if not data['invoice_no']:
+                if not data['entry_id']:
+                    data['line_no'] = 1
+            elif allocate_number:
                 # Serialize allocation per case-insensitive invoice + brand.
                 # Include deleted history so its internal numbers are not reused.
                 cur.execute('select pg_advisory_xact_lock(hashtext(lower(%s)), %s)', (data['invoice_no'], data['brand_id']))
@@ -655,8 +665,14 @@ def entry_form(options, values, token, user=None):
     }
     dispatch_fields = ''.join(control for key, control in dispatch_controls.items()
                               if not limited_edit or field_edit_access(user, 'dispatch', key, existing=True))
+    pi_hint = ('Saved PI number.' if edit else
+               values.get('_pi_preview_error') or 'Next number · assigned on save.')
+    pi_control = inp('pi_number', 'PI number', extra='maxlength="100" readonly aria-readonly="true" placeholder="'
+                     + ('Not recorded' if edit else 'Generated when saved') + '"')
+    pi_control = pi_control.replace('</div>', '<small id="pi-number-status" class="entry-note">'
+                                    + esc(pi_hint) + '</small></div>', 1)
     sections = [
-        ("Invoice & customer", inp("invoice_date", "Invoice date", kind="date", required=True) + inp("invoice_no", "Invoice number", required=True, extra='maxlength="100" placeholder="e.g. SDR/26-27/225"') + inp("pi_number", "PI number", extra='placeholder="Optional"') + sel("customer_id", "Existing customer")),
+        ("Invoice & customer", pi_control + inp("invoice_no", "Invoice number", extra='maxlength="100" placeholder="Optional — enter when billed"') + inp("invoice_date", "Invoice date", kind="date", required=True) + sel("customer_id", "Existing customer")),
         ("Sales classification", sel("channel_id", "Channel", required=True) + sel("sub_channel_id", "Subchannel") + sel("person_id", "Salesperson") + sel("brand_id", "Brand", required=True) + '<div><label for="order_type">Order type</label><select id="order_type" name="order_type">' + ''.join(f'<option{" selected" if values.get("order_type","Re-order")==x else ""}>{x}</option>' for x in ("First", "Re-order")) + '</select></div>'),
         ("Customer / invoice location", sel("state_id", "State", required=True) + sel("district_id", "District") + sel("city_id", "City")),
         ("Sales values", invoice_ui.render(options.get('product_catalog', []), values,
@@ -706,7 +722,9 @@ def entry_form(options, values, token, user=None):
     if limited_edit:
         context = 'Entry ' + esc(values.get('entry_id'))
         if section_access(user, 'invoice'):
-            context = 'Invoice ' + esc(values.get('invoice_no')) + ' · ' + esc(format_date(values.get('invoice_date')))
+            document = values.get('invoice_no') or values.get('pi_number') or ('Entry ' + str(values.get('entry_id')))
+            label = 'Invoice ' if values.get('invoice_no') else 'PI ' if values.get('pi_number') else ''
+            context = label + esc(document) + ' · ' + esc(format_date(values.get('invoice_date')))
             customer = next((row[1] for row in options.get('customer_id', [])
                              if str(row[0]) == str(values.get('customer_id'))), '')
             if customer:
@@ -724,6 +742,19 @@ def entry_form(options, values, token, user=None):
     for(const o of city.options){if(!o.value)continue;o.hidden=o.dataset.state!==state.value||!!district.value&&o.dataset.district!==district.value;o.disabled=o.hidden;if(o.hidden&&o.selected)city.value='';}}
     state.addEventListener('change',()=>{district.value='';city.value='';filter()});district.addEventListener('change',()=>{city.value='';filter()});city.addEventListener('change',()=>{const o=city.selectedOptions[0];if(o&&o.value){district.value=o.dataset.district||'';filter()}});filter();})();
     </script>"""
+    if not edit:
+        html += """<script>
+        (()=>{const pi=document.getElementById('pi_number'),date=document.getElementById('invoice_date'),status=document.getElementById('pi-number-status');
+        if(!pi||!date||pi.matches(':disabled'))return;let request=0,controller=null;
+        date.addEventListener('change',async()=>{const current=++request;controller?.abort();controller=new AbortController();
+          pi.value='';if(status)status.textContent='Checking next PI number…';
+          try{const response=await fetch('/entries/pi-next?date='+encodeURIComponent(date.value),{credentials:'same-origin',headers:{Accept:'application/json'},signal:controller.signal});
+            const result=await response.json();if(current!==request)return;
+            if(!response.ok)throw new Error(result.message||'The next PI preview is unavailable. It will be assigned when saved.');
+            pi.value=result.pi_number||'';if(status)status.textContent='Next number · assigned on save.';
+          }catch(error){if(error.name!=='AbortError'&&current===request&&status)status.textContent=error.message||'The next PI preview is unavailable. It will be assigned when saved.';}
+        });})();
+        </script>"""
     if may_view_customer(user) and not limited_edit:
         html += customer_ui.assets()
     return html
@@ -737,7 +768,7 @@ def ledger_query(params, user=None):
         args.extend(scope_args)
     search = str(params.get("q", "")).strip()[:200]
     if search:
-        searchable = (['invoice_no', 'customer'] if section_access(user, 'invoice') else [])
+        searchable = (['pi_number', 'invoice_no', 'customer'] if section_access(user, 'invoice') else [])
         if section_access(user, 'dispatch'):
             searchable.append('courier_docket_no')
         if not searchable:
@@ -770,14 +801,14 @@ def csv_cell(value):
 
 
 EXPORT_FIELDS = {
-    'invoice': ('invoice_date', 'invoice_no', 'line_no', 'pi_number', 'customer'),
+    'invoice': ('invoice_date', 'pi_number', 'invoice_no', 'line_no', 'customer'),
     'classification': ('channel', 'sub_channel', 'sales_person', 'brand', 'order_type'),
     'location': ('state', 'district', 'city'),
     'values': (*AMOUNTS, 'credit_days', 'payment_received_on'),
     'dispatch': ('stock_supplied_on', *SHIPPING_FIELDS, 'courier', 'courier_docket_no', 'remarks'),
 }
 REGISTER_COLUMNS = (
-    ('invoice', 'invoice_date', 'Invoice date'), ('invoice', 'invoice_no', 'Invoice / line'),
+    ('invoice', 'invoice_date', 'Invoice date'), ('invoice', 'pi_number', 'PI number'), ('invoice', 'invoice_no', 'Invoice / line'),
     ('invoice', 'customer', 'Customer'), ('classification', 'channel', 'Channel'),
     ('classification', 'sales_person', 'Salesperson'), ('classification', 'brand', 'Brand'),
     ('location', 'state', 'State'), ('location', 'district', 'District'), ('location', 'city', 'Location'),
@@ -786,7 +817,7 @@ REGISTER_COLUMNS = (
     ('dispatch', 'courier', 'Courier type'), ('dispatch', 'courier_docket_no', 'Courier number'),
 )
 REGISTER_WIDTHS = {
-    'invoice_date': 10, 'invoice_no': 11, 'customer': 16, 'channel': 7,
+    'invoice_date': 10, 'pi_number': 12, 'invoice_no': 11, 'customer': 16, 'channel': 7,
     'sales_person': 10, 'brand': 8, 'state': 8, 'district': 8, 'city': 8,
     'primary_taxable': 12, 'courier': 8, 'courier_docket_no': 9, 'actions': 10,
     'weight_kg': 7, 'transport_service': 8,
@@ -850,7 +881,8 @@ def register(app, current_user, login_redirect, page, invalidate):
             with closing(pgdata.connect()) as conn, conn.cursor() as cur:
                 if delete_id:
                     record = read_record(cur, delete_id, user)
-                    identification = (f'Invoice {record["invoice_no"]}, line {record["line_no"]}'
+                    identification = ((f'Invoice {record["invoice_no"]}, line {record["line_no"]}' if record.get('invoice_no')
+                                       else f'PI {record["pi_number"]}' if record.get('pi_number') else f'Entry {record["entry_id"]}')
                                       if 'invoice' in visible else f'Entry {record["entry_id"]}')
                     body += f'<div class="entry-panel entry-section"><h1>Delete sales entry</h1><p>{esc(identification)}</p><p>This removes the entry from registers, dashboards and target actuals. Its history remains in the database audit trail.</p><form method="post" action="/entries/delete"><input type="hidden" name="csrf_token" value="{esc(csrf_token(request))}"><input type="hidden" name="entry_id" value="{record["entry_id"]}"><input type="hidden" name="revision" value="{esc(record["revision"])}"><label><input style="width:auto;min-height:0" type="checkbox" name="confirm" value="yes" required> I confirm deletion of this sales entry</label><p><a class="entry-btn" href="/entries">Cancel</a> <button class="entry-btn primary" type="submit">Delete sales entry</button></p></form></div></main>'
                     return HTMLResponse(page('Delete sales entry', body, user), headers={'Cache-Control': 'no-store'})
@@ -870,6 +902,13 @@ def register(app, current_user, login_redirect, page, invalidate):
                     values = {**(values or {'invoice_date': date.today()}), '_invoice_saved': False, '_invoice_summary_only': False}
                 option_keys = {key for section in visible for key in SECTION_FIELDS[section] if key in DIMENSIONS}
                 options = load_options(cur, values, option_keys, user) if can_new or form_open else {key: [] for key in DIMENSIONS}
+                if can_new and not edit_id:
+                    try:
+                        preview_date = parse_date(values.get('invoice_date'))
+                        values['pi_number'] = pi_numbers.preview_next(cur, pi_numbers.fiscal_year(preview_date))
+                    except (ValueError, pi_numbers.PIError) as exc:
+                        values['pi_number'] = ''
+                        values['_pi_preview_error'] = str(exc) or 'Choose a valid invoice date to preview the next PI number.'
                 if form_open and 'values' in visible and not (edit_id and dispatch_only_editor(user)):
                     inactive_ids = [item['product_id'] for item in (saved_invoice or {}).get('items', [])] if edit_id else []
                     options['product_catalog'] = invoice_items.catalog_options(cur, include_inactive_ids=inactive_ids)
@@ -944,9 +983,9 @@ def register(app, current_user, login_redirect, page, invalidate):
         if can_register:
             body += '<section id="ledger" class="entry-panel"' + (' hidden' if form_open else '') + '><div class="entry-panel-heading"><div><h2>Sales register</h2><p>Only sections included in your access are displayed.</p></div><span class="entry-note">25 entries per page</span></div><form class="ledger-filter" method="get" action="/entries">'
             if visible & {'invoice', 'dispatch'}:
-                search_hint = 'Invoice or customer' if 'invoice' in visible else 'Courier number'
+                search_hint = 'PI, invoice or customer' if 'invoice' in visible else 'Courier number'
                 if {'invoice', 'dispatch'} <= visible:
-                    search_hint = 'Invoice, customer or courier number'
+                    search_hint = 'PI, invoice, customer or courier number'
                 body += input_field('q', 'Search entries', request.query_params, extra=f'placeholder="{search_hint}" maxlength="200"')
             if 'invoice' in visible:
                 for key, label in (('from', 'From date'), ('to', 'To date')):
@@ -979,7 +1018,7 @@ def register(app, current_user, login_redirect, page, invalidate):
                     if key == 'invoice_date':
                         cell = esc(format_date(value))
                     elif key == 'invoice_no':
-                        cell = f'<span class="entry-invoice">{esc(value)}</span><span class="entry-line">Line {esc(row.get("line_no"))}</span>'
+                        cell = f'<span class="entry-invoice">{esc(value) if value else "—"}</span><span class="entry-line">Line {esc(row.get("line_no"))}</span>'
                     elif key == 'primary_taxable':
                         cell = number(value)
                     elif key == 'weight_kg':
@@ -1016,6 +1055,25 @@ def register(app, current_user, login_redirect, page, invalidate):
     def entries(request: Request):
         user = current_user(request)
         return render(request, user) if user else login_redirect(request)
+
+    @app.get('/entries/pi-next')
+    def next_pi_preview(request: Request):
+        user = current_user(request)
+        headers = {'Cache-Control': 'no-store'}
+        if not user:
+            return JSONResponse({'message': 'Sign in to preview the next PI number.'}, status_code=401, headers=headers)
+        if not may_create(user):
+            return JSONResponse({'message': 'Create sales access is required to preview a new PI number.'}, status_code=403, headers=headers)
+        try:
+            selected_date = parse_date(request.query_params.get('date', ''))
+            fy = pi_numbers.fiscal_year(selected_date)
+            with closing(pgdata.connect()) as conn, conn.cursor() as cur:
+                number = pi_numbers.preview_next(cur, fy)
+        except ValueError as exc:
+            return JSONResponse({'message': str(exc) or 'Choose a valid invoice date.'}, status_code=400, headers=headers)
+        except Exception:
+            return JSONResponse({'message': 'The next PI preview is unavailable. It will be assigned when saved.'}, status_code=503, headers=headers)
+        return JSONResponse({'pi_number': number, 'financial_year': fy, 'reserved': False}, headers=headers)
 
     def customer_failure(message, status):
         return JSONResponse({'message': message}, status_code=status,

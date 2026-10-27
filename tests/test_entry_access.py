@@ -50,7 +50,13 @@ class Cursor:
         self.connection.calls.append((query, args))
         row = self.connection.row
         self.rows = []
-        if query.startswith('select * from txn.sales_entry'):
+        if query.startswith('select last_number from txn.sales_pi_counter'):
+            self.rows = [(self.connection.pi_counter,)]
+        elif query.startswith('select coalesce(max((regexp_match('):
+            self.rows = [(0,)]  # These fixtures contain no historical numbered PIs.
+        elif query.startswith('update txn.sales_pi_counter set last_number='):
+            self.connection.pi_counter = int(args[0])
+        elif query.startswith('select * from txn.sales_entry'):
             self.description = [(key,) for key in row]
             self.rows = [tuple(row.values())] if not row['is_deleted'] else []
         elif query.startswith('select count(*)'):
@@ -95,6 +101,7 @@ class Cursor:
 class Connection:
     def __init__(self):
         self.row = record()
+        self.pi_counter = 0
         self.calls = []
         self.saved = None
         self.deleted = False

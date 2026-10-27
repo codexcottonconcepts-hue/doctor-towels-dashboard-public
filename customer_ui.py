@@ -21,12 +21,14 @@ def render(values, *, can_edit_profile=False, can_view_profile=True):
      data-can-view-profile="true"
      data-profile-url="/entries/customers">
   <div class="customer-details-toolbar">
-    <span class="customer-details-caption">Customer details</span>
+    <span id="customer-dialog-title" class="customer-details-caption">Customer details</span>
     <div class="customer-details-actions">
       <button type="button" id="customer-add" class="entry-btn customer-action"{' hidden' if new or not can_edit_profile else ''}>+ Add customer</button>
       <button type="button" id="customer-edit" class="entry-btn customer-action" hidden>Edit</button>
       <button type="button" id="customer-update" class="entry-btn primary customer-action" hidden>Update customer</button>
+      <button type="button" id="customer-done" class="entry-btn primary customer-action" hidden>Done</button>
       <button type="button" id="customer-cancel" class="entry-btn customer-action"{'' if new else ' hidden'}>Cancel</button>
+      <button type="button" id="customer-close" class="entry-btn customer-action customer-editor-close" aria-label="Close customer editor" hidden>×</button>
     </div>
   </div>
   <div id="customer-new-name" class="entry-field customer-new-name"{hidden}>

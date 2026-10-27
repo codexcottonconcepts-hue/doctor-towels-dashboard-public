@@ -65,7 +65,13 @@ class Cursor:
         self.conn.calls.append((query, args))
         self.rows, self.description = [], []
         compact = ' '.join(query.split())
-        if compact.startswith('select * from txn.sales_entry'):
+        if compact.startswith('select last_number from txn.sales_pi_counter'):
+            self.rows = [(self.conn.pi_counter,)]
+        elif compact.startswith('select coalesce(max((regexp_match('):
+            self.rows = [(0,)]  # These fixtures contain no historical numbered PIs.
+        elif compact.startswith('update txn.sales_pi_counter set last_number='):
+            self.conn.pi_counter = int(args[0])
+        elif compact.startswith('select * from txn.sales_entry'):
             row = self.conn.records.get(int(args[0]))
             if row and not row['is_deleted']:
                 self.description = [(key,) for key in row]
@@ -143,6 +149,7 @@ class Connection:
     def __init__(self):
         self.records = {7: record(7, 1), 8: record(8, 3), 9: record(9, 6)}
         self.calls, self.mutations, self.saved, self.submitted = [], [], None, None
+        self.pi_counter = 0
     def __enter__(self): return self
     def __exit__(self, *args): return False
     def cursor(self): return Cursor(self)

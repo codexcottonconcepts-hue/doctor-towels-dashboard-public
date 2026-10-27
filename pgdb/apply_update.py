@@ -24,7 +24,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parents[1]
 ADMIN = ROOT / '.local-postgres' / 'admin.url'
 SQL = ROOT / 'pgdb' / 'sql'
-UPDATES = ('15_target_planner.sql', '16_shipping_details.sql', '17_product_invoice.sql', '18_invoice_colour.sql', '22_customer_details.sql', '23_customer_contact.sql')
+UPDATES = ('15_target_planner.sql', '16_shipping_details.sql', '17_product_invoice.sql', '18_invoice_colour.sql', '22_customer_details.sql', '23_customer_contact.sql', '24_sales_pi_numbers.sql', '25_geo_reference.sql')
 
 
 def apply(dsn, say=print):

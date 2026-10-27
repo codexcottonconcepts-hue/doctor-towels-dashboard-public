@@ -1,27 +1,35 @@
-# Customer details in sales entry
+# Customer details and PI numbers
 
-The portrait customer panel beside the invoice fields contains address, optional
-contact number, locality, GSTIN and mapped state, district and city. It stacks
-below the invoice fields on smaller screens. GSTIN is optional for an
-unregistered customer; contact numbers preserve international/landline formatting.
+Add customer and Edit customer open a large customer editor containing the
+address, optional contact number, locality, GSTIN, state, district and city.
+Done returns the draft to the sales-entry form; Cancel restores the previous
+selection and invoice location. Updating an existing customer saves its shared
+profile explicitly, without creating an invoice or changing historical sales.
+GSTIN and contact number remain optional. Existing permission, channel, CSRF
+and stale-edit protections still apply.
 
-Add customer creates a distinct customer only when the sales entry is saved.
-Duplicate names are rejected. Select an existing customer, click Edit, then
-Update customer to save its shared profile without creating or changing an
-invoice. Existing invoice locations and amounts remain unchanged. Concurrent
-profile edits are protected by the customer revision and recorded in the audit
-log. Older open forms cannot erase a contact number they never displayed.
+PI number appears first and is read-only. A preview is informational and never
+reserves a number. Saving a new sales entry assigns the next `DST-PIyy-nnn`
+number on the server, using one transactional counter per financial year across
+both brands. Concurrent saves receive distinct numbers; repeating the same form
+returns its original saved entry and PI. Existing PI strings, product/brand
+splits, letter suffixes and deleted history are preserved and considered when
+finding the next numeric stem. An existing entry's PI is never backfilled or
+renumbered during editing.
 
-Viewing requires Invoice & customer and Location view access. Updating requires
-edit access to both sections plus sales creation or sales edit access. Channel
-restrictions and CSRF validation still apply; dispatch-only access is insufficient.
+Invoice number is optional and is never generated. Enter the real billing
+invoice number when available. The same invoice can still have separate rows
+for Doctor Towels and Thirsty Towels. The date determines the April–March
+financial year used for a new PI.
 
-Back up the database, then apply `pgdb/sql/22_customer_details.sql` followed by
-`pgdb/sql/23_customer_contact.sql` using the database owner, or run the existing
-`pgdb/apply_update.py` owner workflow. These migrations do not alter invoice
-values or require Warehouse, sales-unit or GST migrations.
+Apply `pgdb/sql/22_customer_details.sql`, `pgdb/sql/23_customer_contact.sql`, then
+`pgdb/sql/24_sales_pi_numbers.sql` through the database-owner workflow, or use
+`pgdb/apply_update.py`. These source-copy migrations do not require Warehouse,
+sales-unit or GST migrations.
 
-Run `python -m unittest discover -s tests -p test_customer_details.py` for local
-validation and route tests. Database tests require an explicitly prepared
-localhost test database in `CUSTOMER_DETAILS_TEST_DATABASE_URL`; never use a live
-database for those tests.
+Run `python -m unittest discover -s tests -p test_customer_details.py` and
+`python -m unittest discover -s tests -p test_pi_numbers.py` for validation and
+route tests. PostgreSQL suites require explicitly prepared localhost `*_test`
+databases in `CUSTOMER_DETAILS_TEST_DATABASE_URL` and `PI_TEST_DATABASE_URL`.
+Never point tests at a live database. The Warehouse-specific optional test is
+skipped when that integration is not part of the source copy.
