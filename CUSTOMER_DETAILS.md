@@ -1,11 +1,22 @@
 # Customer details and PI numbers
 
-Add customer and Edit customer open a large customer editor containing the
-address, optional contact number, locality, GSTIN, state, district and city.
-Done returns the draft to the sales-entry form; Cancel restores the previous
-selection and invoice location. Updating an existing customer saves its shared
-profile explicitly, without creating an invoice or changing historical sales.
-GSTIN and contact number remain optional. Existing permission, channel, CSRF
+Customer profile details and invoice location stay hidden in the default
+sales-entry form, which uses the full width without an empty side panel.
+Add customer and Edit open the customer editor; Location opens a separate
+invoice-location popup using the same State, District and City controls.
+Done keeps invoice-location changes and Cancel restores them, without updating
+the shared customer profile. Read-only users receive View details or View
+location actions, and their existing permissions remain unchanged. Required
+hidden name or State validation reopens the appropriate editor.
+
+The customer editor shows Address, then optional Contact number and GSTIN
+beside each other. The visible locality field has been removed; its stored
+value remains in a hidden control and is preserved during updates. Done keeps
+a compact new-customer draft name for identification and the sales entry;
+Cancel restores the previous customer and invoice location. Updating an existing
+customer explicitly saves its shared profile without creating an invoice or
+changing historical sales, and restores the invoice's prior location.
+This visibility update requires no database changes. Existing channel, CSRF
 and stale-edit protections still apply.
 
 PI number appears first and is read-only. A preview is informational and never

@@ -21,7 +21,7 @@ def render(values, *, can_edit_profile=False, can_view_profile=True):
      data-can-view-profile="true"
      data-profile-url="/entries/customers">
   <div class="customer-details-toolbar">
-    <span id="customer-dialog-title" class="customer-details-caption">Customer details</span>
+    <span id="customer-dialog-title" class="customer-details-caption" hidden>Customer details</span>
     <div class="customer-details-actions">
       <button type="button" id="customer-add" class="entry-btn customer-action"{' hidden' if new or not can_edit_profile else ''}>+ Add customer</button>
       <button type="button" id="customer-edit" class="entry-btn customer-action" hidden>Edit</button>
@@ -33,9 +33,9 @@ def render(values, *, can_edit_profile=False, can_view_profile=True):
   </div>
   <div id="customer-new-name" class="entry-field customer-new-name"{hidden}>
     <label for="new_customer">New customer name<span class="entry-required">*</span></label>
-    <input id="new_customer" name="new_customer" value="{_text(values.get('new_customer'))}" maxlength="200" placeholder="Enter customer name"{' required' if enabled else ''}{disabled}>
+    <input id="new_customer" name="new_customer" value="{_text(values.get('new_customer'))}" maxlength="200" placeholder="Enter customer name"{disabled}>
   </div>
-  <div id="customer-details-profile" class="customer-profile-grid">
+  <div id="customer-details-profile" class="customer-profile-grid" hidden>
     <div class="entry-field customer-address-field">
       <label for="customer_address">Address</label>
       <textarea id="customer_address" name="customer_address" maxlength="2000" rows="2" placeholder="Building, street and area"{disabled}>{_text(values.get('customer_address'))}</textarea>
@@ -45,14 +45,11 @@ def render(values, *, can_edit_profile=False, can_view_profile=True):
       <input id="customer_contact_number" name="customer_contact_number" type="tel" value="{_text(values.get('customer_contact_number'))}" maxlength="40" autocomplete="tel" placeholder="Optional contact number"{disabled}>
     </div>
     <div class="entry-field">
-      <label for="customer_location">Location / locality</label>
-      <input id="customer_location" name="customer_location" value="{_text(values.get('customer_location'))}" maxlength="200" placeholder="Area or locality"{disabled}>
-    </div>
-    <div class="entry-field">
       <label for="customer_gstin">GSTIN number</label>
       <input id="customer_gstin" name="customer_gstin" value="{_text(values.get('customer_gstin'))}" maxlength="15" autocapitalize="characters" spellcheck="false" placeholder="Optional GSTIN"{disabled}>
     </div>
   </div>
+  <input id="customer_location" name="customer_location" type="hidden" value="{_text(values.get('customer_location'))}"{disabled}>
   <p id="customer-status" class="customer-status" role="status" aria-live="polite" hidden></p>
 </div>'''
 
