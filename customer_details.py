@@ -9,8 +9,9 @@ import re
 import dashboard_policy as dp
 
 
-PROFILE_FIELDS = ('customer_address', 'customer_location', 'customer_gstin')
+PROFILE_FIELDS = ('customer_address', 'customer_location', 'customer_gstin', 'customer_contact_number')
 _GSTIN = re.compile(r'[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]\Z')
+_CONTACT = re.compile(r'\+?[0-9 ()-]+\Z')
 
 
 class CustomerError(ValueError):
@@ -33,20 +34,23 @@ def _text(value, label, maximum, *, multiline=False):
 
 
 def parse_fields(form):
-    """Normalize the three customer-detail inputs; blanks remain optional."""
+    """Normalize customer details; unreported optional values remain blank."""
     address = _text(form.get('customer_address'), 'Customer address', 2000, multiline=True)
     location = _text(form.get('customer_location'), 'Customer location', 200)
     gstin = _text(form.get('customer_gstin'), 'GSTIN', 15)
+    contact = _text(form.get('customer_contact_number'), 'Contact number', 40)
     if gstin:
         gstin = gstin.upper()
         if not _GSTIN.fullmatch(gstin):
             raise CustomerError('Enter a valid 15-character GSTIN, or leave it blank for an unregistered customer.')
-    return {'address': address, 'location': location, 'gstin': gstin}
+    if contact and (not _CONTACT.fullmatch(contact) or not re.search(r'[0-9]', contact)):
+        raise CustomerError('Contact number: use digits, spaces, parentheses or hyphens, with an optional leading +.')
+    return {'address': address, 'location': location, 'gstin': gstin, 'contact_number': contact}
 
 
 def _details(details):
     return parse_fields({'customer_' + key: details.get(key)
-                         for key in ('address', 'location', 'gstin')})
+                         for key in ('address', 'location', 'gstin', 'contact_number')})
 
 
 def _ident(value, label, *, required=False):
@@ -111,7 +115,7 @@ def _profile(cur, customer_id, channels, include_inactive, *, lock=False):
     customer_id = _ident(customer_id, 'customer', required=True)
     scope, args = _scope(channels)
     active = '' if include_inactive else ' and cu.is_active'
-    cur.execute('select cu.customer_id,cu.name,cu.address,cu.location,cu.gstin,'
+    cur.execute('select cu.customer_id,cu.name,cu.address,cu.location,cu.gstin,cu.contact_number,'
                 'coalesce(cu.state_id,ci.state_id) as state_id,'
                 'coalesce(cu.district_id,ci.district_id) as district_id,cu.city_id,'
                 'st.name as state,di.name as district,ci.name as city,'
@@ -148,9 +152,9 @@ def create_customer(cur, name, details, geo, sub_channel_id, username):
         if not cur.fetchone():
             raise CustomerError('The selected customer subchannel is unavailable. Reload the form.')
     cur.execute("select set_config('app.username',%s,true)", (str(username),))
-    cur.execute('insert into master.customer(name,address,location,gstin,state_id,district_id,city_id,sub_channel_id,details_updated_by) '
-                'values (%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict (lower(name)) do nothing returning customer_id',
-                (name, details['address'], details['location'], details['gstin'],
+    cur.execute('insert into master.customer(name,address,location,gstin,contact_number,state_id,district_id,city_id,sub_channel_id,details_updated_by) '
+                'values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict (lower(name)) do nothing returning customer_id',
+                (name, details['address'], details['location'], details['gstin'], details['contact_number'],
                  geo['state_id'], geo['district_id'], geo['city_id'], sub_channel_id, str(username)))
     created = cur.fetchone()
     if not created:
@@ -160,14 +164,19 @@ def create_customer(cur, name, details, geo, sub_channel_id, username):
 
 def update_customer(cur, customer_id, details, geo, revision, username, channels=None):
     """Explicitly update a profile, with channel and stale-form protection."""
+    contact_supplied = 'contact_number' in details
     details = _details(details)
     current = _profile(cur, customer_id, channels, False, lock=True)
     if not revision or str(revision) != current['revision']:
         raise CustomerError('Another user changed this customer. Reload its details before saving again.', 409)
+    if not contact_supplied:
+        # An already-open older browser does not have the new phone control.
+        # Omission must not erase a saved number; explicit blank still clears it.
+        details['contact_number'] = current.get('contact_number')
     geo = validate_geography(cur, geo, existing_city_id=current['city_id'])
     cur.execute("select set_config('app.username',%s,true)", (str(username),))
-    cur.execute('update master.customer set address=%s,location=%s,gstin=%s,state_id=%s,district_id=%s,city_id=%s,'
+    cur.execute('update master.customer set address=%s,location=%s,gstin=%s,contact_number=%s,state_id=%s,district_id=%s,city_id=%s,'
                 'details_updated_at=clock_timestamp(),details_updated_by=%s where customer_id=%s',
-                (details['address'], details['location'], details['gstin'], geo['state_id'],
+                (details['address'], details['location'], details['gstin'], details['contact_number'], geo['state_id'],
                  geo['district_id'], geo['city_id'], str(username), current['customer_id']))
     return _profile(cur, current['customer_id'], channels, False)

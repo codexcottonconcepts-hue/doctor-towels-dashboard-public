@@ -8,17 +8,17 @@
     const form=panel.closest('form'),customer=document.getElementById('customer_id');
     if(!form||!customer)return;
     const name=document.getElementById('new_customer'),nameBox=document.getElementById('customer-new-name');
-    const profileBox=document.getElementById('customer-details-profile'),geography=document.getElementById('customer-profile-geography');
+    const profileBox=document.getElementById('customer-details-profile');
     const status=document.getElementById('customer-status');
     const add=document.getElementById('customer-add'),edit=document.getElementById('customer-edit');
     const update=document.getElementById('customer-update'),cancel=document.getElementById('customer-cancel');
-    const fields={address:document.getElementById('customer_address'),location:document.getElementById('customer_location'),gstin:document.getElementById('customer_gstin')};
+    const fields={address:document.getElementById('customer_address'),contact_number:document.getElementById('customer_contact_number'),location:document.getElementById('customer_location'),gstin:document.getElementById('customer_gstin')};
     const geo=['state_id','district_id','city_id'].map(id=>document.getElementById(id));
     const permitted=panel.dataset.canEditProfile==='true'&&!panel.closest('fieldset')?.disabled;
     const base=(panel.dataset.profileUrl||'/entries/customers').replace(/\/$/,'');
     let mode=name?.value.trim()?'new':'view',profile=null,request=0,controller=null,busy=false,loading=false;
     let previousCustomer='',invoiceGeo=null,suppress=false;
-    function message(text,kind=''){if(status){status.textContent=text;status.dataset.kind=kind;}}
+    function message(text,kind=''){if(status){status.textContent=text;status.dataset.kind=kind;status.hidden=!text;}}
     function announceChange(control){control.dispatchEvent(new Event('change',{bubbles:true}));}
     function selected(value){suppress=true;customer.value=String(value||'');announceChange(customer);suppress=false;}
     function readGeo(){return geo.map(control=>control?.value||'');}
@@ -54,23 +54,19 @@
       const newMode=mode==='new',editing=mode==='edit';
       if(nameBox)nameBox.hidden=!newMode;
       if(name){name.disabled=!newMode||!permitted;name.required=newMode&&permitted;}
-      if(profileBox)profileBox.hidden=!newMode&&!profile&&!editing;
+      if(profileBox)profileBox.hidden=false;
       for(const control of Object.values(fields))if(control)control.disabled=!(permitted&&(newMode||editing))||busy;
       if(add){add.hidden=!permitted||newMode||editing;add.disabled=busy;}
       if(edit){edit.hidden=!permitted||!profile||newMode||editing;edit.disabled=busy;}
       if(update){update.hidden=!editing;update.disabled=busy;update.textContent=busy?'Updating…':'Update customer';}
       if(cancel){cancel.hidden=!newMode&&!editing;cancel.disabled=busy;}
-      if(geography){
-        geography.hidden=!profile||newMode;
-        geography.textContent=profile?[profile.state,profile.district,profile.city].filter(Boolean).join(' · '):'';
-      }
     }
     function stopFetch(){request++;controller?.abort();controller=null;loading=false;}
     async function load(applyLocation=false){
       stopFetch();
       const id=customer.value,sequence=request;
       mode='view';profile=null;if(name)name.value='';fill(null);render();
-      if(!id){message('Select an existing customer or add a customer.');return;}
+      if(!id){message('');return;}
       controller=new AbortController();loading=true;message('Loading customer details…');
       try{
         const response=await fetch(base+'/'+encodeURIComponent(id),{credentials:'same-origin',headers:{Accept:'application/json'},signal:controller.signal});
@@ -83,7 +79,7 @@
           message('The saved customer location is unavailable. Reload the customer details before changing its location.','error');
         }else{
           if(applyLocation)writeGeo(profileGeo(profile));
-          message(permitted?'Customer details are saved. Use Edit customer details to change this customer’s profile.':'Saved customer details.');
+          message('');
         }
       }catch(error){if(error.name!=='AbortError'&&sequence===request)message(error.message||'Customer details could not be loaded.','error');}
       finally{if(sequence===request){controller=null;loading=false;render();}}
@@ -96,20 +92,20 @@
     add?.addEventListener('click',()=>{
       if(!permitted||busy)return;
       stopFetch();previousCustomer=customer.value;invoiceGeo=readGeo();selected('');profile=null;mode='new';fill(null);
-      if(name)name.value='';render();message('Choose the new customer’s state, district and city below. It will be added when this sales entry is saved.');name?.focus();
+      if(name)name.value='';render();message('');name?.focus();
     });
     edit?.addEventListener('click',()=>{
       if(!permitted||!profile||busy)return;
       if(!ensureProfileCity(profile)){message('The saved customer location is unavailable. Reload the customer details before changing its location.','error');return;}
       invoiceGeo=readGeo();mode='edit';fill(profile);writeGeo(profileGeo(profile));render();
-      message('Edit the customer’s address, GSTIN and location below, then click Update customer. The existing sales entry will not be changed.');fields.address?.focus();
+      message('');fields.address?.focus();
     });
     cancel?.addEventListener('click',()=>{
       if(busy)return;
       const wasNew=mode==='new';mode='view';if(name)name.value='';
       if(invoiceGeo)writeGeo(invoiceGeo);invoiceGeo=null;
       if(wasNew){selected(previousCustomer);previousCustomer='';load(false);}
-      else{fill(profile);render();message('Customer changes cancelled. The invoice location has been restored.');}
+      else{fill(profile);render();message('Customer changes cancelled.','success');}
     });
     fields.gstin?.addEventListener('input',()=>{fields.gstin.value=fields.gstin.value.toUpperCase();});
     update?.addEventListener('click',async()=>{
@@ -127,7 +123,7 @@
         if(!result.customer||String(result.customer.customer_id)!==id)throw new Error('The customer update could not be confirmed. Reload the page.');
         profile=result.customer;mode='view';fill(profile);
         if(invoiceGeo)writeGeo(invoiceGeo);invoiceGeo=null;
-        message('Customer updated. Save the sales entry separately for invoice changes.','success');
+        message('Customer updated.','success');
       }catch(error){message(error.message||'The customer could not be updated.','error');}
       finally{busy=false;customer.disabled=wasDisabled;render();}
     });
@@ -140,7 +136,7 @@
     }else{
       const initial=document.getElementById('customer-profile-data');
       if(initial&&customer.value){
-        try{const parsed=JSON.parse(initial.textContent);const value=parsed.customer||parsed;if(String(value.customer_id)===customer.value&&ensureProfileCity(value)){profile=value;fill(profile);render();message('Saved customer details.');return;}}catch{/* Use the authenticated endpoint instead. */}
+        try{const parsed=JSON.parse(initial.textContent);const value=parsed.customer||parsed;if(String(value.customer_id)===customer.value&&ensureProfileCity(value)){profile=value;fill(profile);render();message('');return;}}catch{/* Use the authenticated endpoint instead. */}
       }
       render();if(customer.value)load(false);
     }

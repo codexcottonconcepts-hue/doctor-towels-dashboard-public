@@ -23,6 +23,7 @@ import entry_web
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / 'pgdb' / 'sql' / '22_customer_details.sql'
+CONTACT_MIGRATION = ROOT / 'pgdb' / 'sql' / '23_customer_contact.sql'
 
 
 def details(**changes):
@@ -30,6 +31,7 @@ def details(**changes):
         'customer_address': "12 Cotton Road\nSecond floor, O'Neil & Co",
         'customer_location': 'Near central market',
         'customer_gstin': '33ABCDE1234F1Z5',
+        'customer_contact_number': '0000 111 222',
         **changes,
     })
 
@@ -40,7 +42,7 @@ class CustomerValidationTests(unittest.TestCase):
                      dict.fromkeys(customer.PROFILE_FIELDS, ' \t\n ')):
             with self.subTest(form=form):
                 self.assertEqual(customer.parse_fields(form),
-                                 {'address': None, 'location': None, 'gstin': None})
+                                 {'address': None, 'location': None, 'gstin': None, 'contact_number': None})
 
     def test_text_is_trimmed_but_multiline_address_and_punctuation_are_preserved(self):
         parsed = details(customer_address="  12 Cotton Road\nSecond floor, O'Neil & Co  ",
@@ -78,6 +80,20 @@ class CustomerValidationTests(unittest.TestCase):
             with self.subTest(identifier=identifier), self.assertRaises(customer.CustomerError):
                 customer.validate_geography(NoDatabaseAccess(), {'state_id': identifier})
 
+    def test_contact_number_preserves_leading_zeros_and_readable_phone_punctuation(self):
+        for contact in ('0000111222', '+91 (000) 111-222', '0000-111-222', '0' * 40):
+            with self.subTest(contact=contact):
+                parsed = details(customer_contact_number='  ' + contact + '  ')
+                self.assertEqual(parsed['contact_number'], contact)
+
+    def test_contact_number_is_optional_and_rejects_invalid_or_excessively_long_text(self):
+        for contact in (None, '', ' \t '):
+            self.assertIsNone(details(customer_contact_number=contact)['contact_number'])
+        for contact in ('0' * 41, '+', '( )--', 'call reception', '000.ext',
+                        '1+2', '++000', '१२३४', '00/00', '<script>1</script>'):
+            with self.subTest(contact=contact), self.assertRaises(customer.CustomerError):
+                details(customer_contact_number=contact)
+
 
 def account(*permissions):
     return {'username': 'customer-editor', 'is_admin': False,
@@ -91,6 +107,7 @@ class CustomerRouteTests(unittest.TestCase):
         self.profile = {'customer_id': 7, 'name': 'Profile test customer',
                         'address': '12 Cotton Road', 'location': 'Central market',
                         'gstin': '33ABCDE1234F1Z5', 'state_id': 1, 'district_id': 2,
+                        'contact_number': '0000111222',
                         'city_id': 3, 'state': 'Test state', 'district': 'Test district',
                         'city': 'Test city', 'revision': '2026-10-27T10:20:30+00:00'}
         suite = self
@@ -156,6 +173,7 @@ class CustomerRouteTests(unittest.TestCase):
         return {'csrf_token': token, 'revision': self.profile['revision'],
                 'customer_address': 'Updated billing address', 'customer_location': 'Near office',
                 'customer_gstin': '33abcde1234f1z5', 'state_id': '1', 'district_id': '2',
+                'customer_contact_number': '+91 (000) 111-222',
                 'city_id': '3', **changes}
 
     def test_unauthenticated_profile_read_and_write_do_not_open_a_database(self):
@@ -227,7 +245,8 @@ class CustomerRouteTests(unittest.TestCase):
         self.assertEqual(response.json()['customer'], self.profile)
         self.assertEqual(response.headers.get('cache-control'), 'no-store')
         self.update_profile.assert_called_once_with(self.connections[0].cursor_object, 7,
-            {'address': 'Updated billing address', 'location': 'Near office', 'gstin': '33ABCDE1234F1Z5'},
+            {'address': 'Updated billing address', 'location': 'Near office', 'gstin': '33ABCDE1234F1Z5',
+             'contact_number': '+91 (000) 111-222'},
             {'state_id': '1', 'district_id': '2', 'city_id': '3'},
             self.profile['revision'], 'customer-editor', channels=['LFO'])
         self.assertTrue(self.connections[0].closed)
@@ -249,6 +268,21 @@ class CustomerRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409, response.text)
         self.assertIn('Reload', response.json()['message'])
         self.assertIs(self.connections[0].transaction_error, customer.CustomerError)
+        self.save_entry.assert_not_called()
+
+    def test_invalid_contact_number_is_rejected_without_profile_or_invoice_writes(self):
+        response = self.client.post('/entries/customers/7', data=self.form(customer_contact_number='not a phone'))
+        self.assertEqual(response.status_code, 400)
+        self.update_profile.assert_not_called()
+        self.save_entry.assert_not_called()
+
+    def test_older_browser_omitting_phone_does_not_request_clearing_a_saved_contact(self):
+        form = self.form()
+        del form['customer_contact_number']
+        response = self.client.post('/entries/customers/7', data=form)
+        self.assertEqual(response.status_code, 200, response.text)
+        posted_details = self.update_profile.call_args.args[2]
+        self.assertNotIn('contact_number', posted_details)
         self.save_entry.assert_not_called()
 
 
@@ -274,6 +308,7 @@ class CustomerPostgresTests(unittest.TestCase):
                 before = cur.fetchone()
                 for _ in range(2):
                     cur.execute(MIGRATION.read_text(encoding='utf-8'))
+                    cur.execute(CONTACT_MIGRATION.read_text(encoding='utf-8'))
                 cur.execute('select count(*), coalesce(sum(primary_taxable),0), coalesce(sum(primary_with_tax),0) from txn.sales_entry')
                 if cur.fetchone() != before:
                     raise AssertionError('Applying customer details migration changed primary sales.')
@@ -493,6 +528,67 @@ class CustomerPostgresTests(unittest.TestCase):
         customer.update_customer(self.cur, identifier, details(),
             {**self.geo, 'district_id': None}, first['revision'], 'customer-test')
         self.assertEqual(self.profile(identifier)['district_id'], self.district)
+        self.assert_no_invoice_created()
+
+    def test_contact_number_create_read_and_update_preserve_text_without_an_invoice(self):
+        identifier = self.create_customer(customer_contact_number='0000-111-222')
+        first = self.profile(identifier)
+        self.assertEqual(first['contact_number'], '0000-111-222')
+        edited = customer.update_customer(self.cur, identifier,
+            details(customer_contact_number='+91 (000) 222-111'), self.geo,
+            first['revision'], 'phone-editor')
+        self.assertEqual(edited['contact_number'], '+91 (000) 222-111')
+        saved = self.profile(identifier)
+        self.assertEqual(saved['contact_number'], '+91 (000) 222-111')
+        for field in ('customer_id', 'name', 'address', 'location', 'gstin', 'state_id', 'district_id', 'city_id'):
+            self.assertEqual(saved[field], first[field], field)
+        self.cur.execute("select changed_by,old_row->>'contact_number',new_row->>'contact_number' "
+                         "from sec.audit_log where table_name='master.customer' and row_pk=%s and action='UPDATE' "
+                         'order by audit_id desc limit 1', (str(identifier),))
+        self.assertEqual(self.cur.fetchone(), ('phone-editor', '0000-111-222', '+91 (000) 222-111'))
+        self.assert_no_invoice_created()
+
+    def test_explicit_blank_contact_clears_but_an_omitted_legacy_contact_is_preserved(self):
+        identifier = self.create_customer(customer_contact_number='0000111222')
+        first = self.profile(identifier)
+        legacy_details = details()
+        del legacy_details['contact_number']
+        edited = customer.update_customer(self.cur, identifier, legacy_details, self.geo,
+            first['revision'], 'legacy-editor')
+        self.assertEqual(edited['contact_number'], '0000111222')
+        cleared = customer.update_customer(self.cur, identifier,
+            details(customer_contact_number=''), self.geo, edited['revision'], 'phone-editor')
+        self.assertIsNone(cleared['contact_number'])
+        self.assertIsNone(self.profile(identifier)['contact_number'])
+        blank_identifier = self.create_customer(name='Unregistered phone ' + self.tag,
+            customer_contact_number='')
+        self.assertIsNone(self.profile(blank_identifier)['contact_number'])
+        self.assert_no_invoice_created()
+
+    def test_direct_phone_change_advances_revision_and_rejects_a_stale_profile_edit(self):
+        identifier = self.create_customer(customer_contact_number='0000111222')
+        first = self.profile(identifier)
+        self.cur.execute('update master.customer set contact_number=%s where customer_id=%s',
+                         ('0000222111', identifier))
+        current = self.profile(identifier)
+        self.assertNotEqual(current['revision'], first['revision'],
+                            'The database revision trigger must include contact-only edits.')
+        with self.assertRaises(customer.CustomerError):
+            customer.update_customer(self.cur, identifier,
+                details(customer_contact_number='0000333444'), self.geo,
+                first['revision'], 'stale-phone-editor')
+        self.assertEqual(self.profile(identifier), current)
+        self.assert_no_invoice_created()
+
+    def test_invalid_contact_update_preserves_the_entire_saved_profile(self):
+        identifier = self.create_customer()
+        first = self.profile(identifier)
+        for invalid in ('bad phone', '++0000111', '1' * 41):
+            with self.subTest(invalid=invalid), self.assertRaises(customer.CustomerError):
+                customer.update_customer(self.cur, identifier,
+                    {**details(), 'contact_number': invalid}, self.geo,
+                    first['revision'], 'phone-editor')
+            self.assertEqual(self.profile(identifier), first)
         self.assert_no_invoice_created()
 
     def test_customer_details_follow_the_callers_transaction_and_can_be_rolled_back(self):

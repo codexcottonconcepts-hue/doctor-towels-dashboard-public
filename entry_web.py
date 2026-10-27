@@ -656,7 +656,7 @@ def entry_form(options, values, token, user=None):
     dispatch_fields = ''.join(control for key, control in dispatch_controls.items()
                               if not limited_edit or field_edit_access(user, 'dispatch', key, existing=True))
     sections = [
-        ("Invoice & customer", inp("invoice_date", "Invoice date", kind="date", required=True) + inp("invoice_no", "Invoice number", required=True, extra='maxlength="100" placeholder="e.g. SDR/26-27/225"') + inp("pi_number", "PI number", extra='placeholder="Optional"') + sel("customer_id", "Existing customer") + customer_ui.render(values, can_edit_profile=may_manage_customer(user), can_view_profile=may_view_customer(user))),
+        ("Invoice & customer", inp("invoice_date", "Invoice date", kind="date", required=True) + inp("invoice_no", "Invoice number", required=True, extra='maxlength="100" placeholder="e.g. SDR/26-27/225"') + inp("pi_number", "PI number", extra='placeholder="Optional"') + sel("customer_id", "Existing customer")),
         ("Sales classification", sel("channel_id", "Channel", required=True) + sel("sub_channel_id", "Subchannel") + sel("person_id", "Salesperson") + sel("brand_id", "Brand", required=True) + '<div><label for="order_type">Order type</label><select id="order_type" name="order_type">' + ''.join(f'<option{" selected" if values.get("order_type","Re-order")==x else ""}>{x}</option>' for x in ("First", "Re-order")) + '</select></div>'),
         ("Customer / invoice location", sel("state_id", "State", required=True) + sel("district_id", "District") + sel("city_id", "City")),
         ("Sales values", invoice_ui.render(options.get('product_catalog', []), values,
@@ -676,25 +676,30 @@ def entry_form(options, values, token, user=None):
         submission_field = f'<input type="hidden" name="submission_id" value="{submission_id}">'
     html = f'<div class="entry-panel"><div class="entry-panel-heading entry-form-heading"><div><h2>{header}</h2></div><span class="entry-note"><span class="entry-required">*</span> Required fields</span></div><form method="post" action="/entries/save"><input type="hidden" name="csrf_token" value="{esc(token)}"><input type="hidden" name="entry_id" value="{esc(values.get("entry_id"))}"><input type="hidden" name="revision" value="{esc(values.get("revision"))}">{submission_field}<div class="entry-form-grid"><div class="entry-form-main">'
     specs = dict(zip(SECTION_FIELDS, sections))
-    order = ('invoice', 'location', 'classification', 'values', 'dispatch')
     steps = {'invoice': 1, 'classification': 2, 'values': 3, 'dispatch': 4}
-    group_open = False
-    for section in order:
+
+    def render_section(section):
         title, fields = specs[section]
         if not section_access(user, section) or (limited_edit and section != 'dispatch'):
-            continue
-        if section in ('invoice', 'location') and not group_open:
-            html += '<div class="entry-customer-section">'
-            group_open = True
-        if section not in ('invoice', 'location') and group_open:
-            html += '</div>'
-            group_open = False
+            return ''
         readonly = not writable or not any(field_edit_access(user, section, key, existing=edit) for key in SECTION_FIELDS[section])
         step = f'<span class="step" aria-hidden="true">{steps[section]:02}</span>' if section in steps else ''
         css = ' customer-location-section' if section == 'location' else ''
-        html += f'<fieldset class="entry-section{css}" data-entry-section="{section}"{" disabled" if readonly else ""}><legend>{step}{title}</legend><div class="entry-grid">{fields}</div></fieldset>'
-    if group_open:
-        html += '</div>'
+        return f'<fieldset class="entry-section{css}" data-entry-section="{section}"{" disabled" if readonly else ""}><legend>{step}{title}</legend><div class="entry-grid">{fields}</div></fieldset>'
+
+    profile = '' if limited_edit else customer_ui.render(
+        values, can_edit_profile=may_manage_customer(user), can_view_profile=may_view_customer(user))
+    if profile:
+        profile_readonly = not writable or not field_edit_access(user, 'invoice', 'new_customer', existing=edit)
+        html += ('<div class="entry-customer-section"><div class="customer-invoice-column">'
+                 + render_section('invoice') + render_section('classification')
+                 + '</div><div class="customer-profile-column">'
+                 + '<fieldset class="customer-profile-fieldset" aria-label="Customer details"'
+                 + (' disabled' if profile_readonly else '') + '>' + profile + '</fieldset>'
+                 + render_section('location') + '</div></div>')
+    else:
+        html += ''.join(render_section(section) for section in ('invoice', 'location', 'classification'))
+    html += render_section('values') + render_section('dispatch')
     html += '</div></div><div class="entry-form-actions"><div class="entry-form-buttons"><a class="entry-btn" href="/entries">Cancel</a><button class="entry-btn primary" type="submit">' + ('Save changes' if edit else 'Save sales entry') + '</button></div></div></form></div>'
     if not writable:
         html = html.replace('<button class="entry-btn primary" type="submit">Save changes</button>', '')
@@ -1038,8 +1043,13 @@ def register(app, current_user, login_redirect, page, invalidate):
     def persist_customer_profile(customer_id, form, user):
         with closing(pgdata.connect()) as conn, conn:
             with conn.cursor() as cur:
+                details = customer_details.parse_fields(form)
+                # A page opened before the contact field was installed must not
+                # clear a phone number it never displayed.
+                if 'customer_contact_number' not in form:
+                    details.pop('contact_number', None)
                 return customer_details.update_customer(
-                    cur, customer_id, customer_details.parse_fields(form),
+                    cur, customer_id, details,
                     {key: form.get(key) for key in ('state_id', 'district_id', 'city_id')},
                     form.get('revision'), user['username'], channels=entry_channels(user))
 
