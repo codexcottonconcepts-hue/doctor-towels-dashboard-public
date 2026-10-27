@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 from fastapi import Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 import auth
@@ -20,6 +20,8 @@ import dashboard_policy as dp
 import pgdata
 import invoice_items
 import invoice_ui
+import customer_details
+import customer_ui
 from entry_dates import parse_date, format_date
 from entry_styles import STYLE, DATE_SCRIPT
 
@@ -88,6 +90,16 @@ def may_edit(user):
             (auth.can(user, 'sales.edit') and any(section_access(user, s, 'edit') for s in SECTION_FIELDS)))
 
 
+def may_view_customer(user):
+    return (section_access(user, 'invoice') and section_access(user, 'location') and
+            (user is None or may_create(user) or may_edit(user) or auth.can(user, 'registers.view')))
+
+
+def may_manage_customer(user):
+    return (section_access(user, 'invoice', 'edit') and section_access(user, 'location', 'edit') and
+            (user is None or may_create(user) or auth.can(user, 'sales.edit')))
+
+
 def limited_dispatch_only(user):
     return (user is not None and any(auth.can(user, permission) for permission in LIMITED_DISPATCH_FIELDS) and
             not (auth.can(user, 'sales.edit') and any(section_access(user, s, 'edit') for s in SECTION_FIELDS)))
@@ -147,6 +159,11 @@ def restricted_form(form, user, original=None):
         # Product details have the same access rules as the sales values.
         source = form if field_edit_access(user, 'values', key, existing=original is not None) else {}
         merged[key] = source.get(key, (original or {}).get(key, default))
+    # Customer-only fields are not invoice ledger columns. They are accepted
+    # solely from an invoice editor and used only for explicit customer saves.
+    if field_edit_access(user, 'invoice', 'new_customer', existing=original is not None):
+        for key in customer_details.PROFILE_FIELDS:
+            merged[key] = form.get(key, '')
     return merged
 
 
@@ -335,6 +352,11 @@ def parse_entry(form):
             raise EntryError("Choose a " + key.replace("_id", "") + ".")
     if not out["customer_id"] and not out["new_customer"]:
         raise EntryError("Choose an existing customer or enter a new customer name.")
+    if out['new_customer']:
+        try:
+            out['customer_details'] = customer_details.parse_fields(form)
+        except customer_details.CustomerError as exc:
+            raise EntryError(str(exc)) from None
     out["revision"] = str(form.get("revision", ""))
     out["submission_id"] = None
     if not out['entry_id']:
@@ -426,6 +448,8 @@ def save_entry(form, username, user=None):
                 # after the duplicate-submission and revision checks below.
                 merged.update(dict.fromkeys(PRIMARY_AMOUNTS, '0'))
             data = parse_entry(merged)
+            if data['new_customer'] and not may_manage_customer(user):
+                raise EntryAccessError('Customer creation requires Invoice & customer and Location edit access.')
             validate_required_dispatch(data, user, existing=original is not None)
             if not data['entry_id']:
                 # Brand identifiers are positive, reserving lock namespace 0
@@ -492,15 +516,13 @@ def save_entry(form, username, user=None):
             if not cur.fetchone():
                 raise EntryError("This financial year has not been set up. Ask the administrator to add it first.")
             if data["new_customer"]:
-                cur.execute("insert into master.customer(name,city_id,sub_channel_id) values (%s,%s,%s) on conflict (lower(name)) do nothing returning customer_id",
-                            (data["new_customer"], data["city_id"], data["sub_channel_id"]))
-                found = cur.fetchone()
-                if not found:
-                    cur.execute("select customer_id from master.customer where lower(name)=lower(%s) and is_active", (data["new_customer"],))
-                    found = cur.fetchone()
-                if not found:
-                    raise EntryError("This customer exists but is inactive. Ask the administrator to reactivate it.")
-                data["customer_id"] = found[0]
+                try:
+                    data['customer_id'] = customer_details.create_customer(
+                        cur, data['new_customer'], data['customer_details'],
+                        {key: data[key] for key in ('state_id', 'district_id', 'city_id')},
+                        data['sub_channel_id'], username)
+                except customer_details.CustomerError as exc:
+                    raise EntryError(str(exc)) from None
             if allocate_number:
                 # Serialize allocation per case-insensitive invoice + brand.
                 # Include deleted history so its internal numbers are not reused.
@@ -634,9 +656,9 @@ def entry_form(options, values, token, user=None):
     dispatch_fields = ''.join(control for key, control in dispatch_controls.items()
                               if not limited_edit or field_edit_access(user, 'dispatch', key, existing=True))
     sections = [
-        ("Invoice & customer", inp("invoice_date", "Invoice date", kind="date", required=True) + inp("invoice_no", "Invoice number", required=True, extra='maxlength="100" placeholder="e.g. SDR/26-27/225"') + inp("pi_number", "PI number", extra='placeholder="Optional"') + sel("customer_id", "Existing customer") + inp("new_customer", "Or add a new customer", extra='maxlength="200" placeholder="New customer name"')),
+        ("Invoice & customer", inp("invoice_date", "Invoice date", kind="date", required=True) + inp("invoice_no", "Invoice number", required=True, extra='maxlength="100" placeholder="e.g. SDR/26-27/225"') + inp("pi_number", "PI number", extra='placeholder="Optional"') + sel("customer_id", "Existing customer") + customer_ui.render(values, can_edit_profile=may_manage_customer(user), can_view_profile=may_view_customer(user))),
         ("Sales classification", sel("channel_id", "Channel", required=True) + sel("sub_channel_id", "Subchannel") + sel("person_id", "Salesperson") + sel("brand_id", "Brand", required=True) + '<div><label for="order_type">Order type</label><select id="order_type" name="order_type">' + ''.join(f'<option{" selected" if values.get("order_type","Re-order")==x else ""}>{x}</option>' for x in ("First", "Re-order")) + '</select></div>'),
-        ("Location", sel("state_id", "State", required=True) + sel("district_id", "District") + sel("city_id", "Location / city")),
+        ("Customer / invoice location", sel("state_id", "State", required=True) + sel("district_id", "District") + sel("city_id", "City")),
         ("Sales values", invoice_ui.render(options.get('product_catalog', []), values,
                          editable=writable and field_edit_access(user, 'values', 'invoice_items', existing=edit),
                          colours=options.get('product_colours', ()))
@@ -653,11 +675,26 @@ def entry_form(options, values, token, user=None):
             submission_id = str(uuid4())
         submission_field = f'<input type="hidden" name="submission_id" value="{submission_id}">'
     html = f'<div class="entry-panel"><div class="entry-panel-heading entry-form-heading"><div><h2>{header}</h2></div><span class="entry-note"><span class="entry-required">*</span> Required fields</span></div><form method="post" action="/entries/save"><input type="hidden" name="csrf_token" value="{esc(token)}"><input type="hidden" name="entry_id" value="{esc(values.get("entry_id"))}"><input type="hidden" name="revision" value="{esc(values.get("revision"))}">{submission_field}<div class="entry-form-grid"><div class="entry-form-main">'
-    for step, (section, (title, fields)) in enumerate(zip(SECTION_FIELDS, sections), 1):
+    specs = dict(zip(SECTION_FIELDS, sections))
+    order = ('invoice', 'location', 'classification', 'values', 'dispatch')
+    steps = {'invoice': 1, 'classification': 2, 'values': 3, 'dispatch': 4}
+    group_open = False
+    for section in order:
+        title, fields = specs[section]
         if not section_access(user, section) or (limited_edit and section != 'dispatch'):
             continue
+        if section in ('invoice', 'location') and not group_open:
+            html += '<div class="entry-customer-section">'
+            group_open = True
+        if section not in ('invoice', 'location') and group_open:
+            html += '</div>'
+            group_open = False
         readonly = not writable or not any(field_edit_access(user, section, key, existing=edit) for key in SECTION_FIELDS[section])
-        html += f'<fieldset class="entry-section"{" disabled" if readonly else ""}><legend><span class="step" aria-hidden="true">{step:02}</span>{title}</legend><div class="entry-grid">{fields}</div></fieldset>'
+        step = f'<span class="step" aria-hidden="true">{steps[section]:02}</span>' if section in steps else ''
+        css = ' customer-location-section' if section == 'location' else ''
+        html += f'<fieldset class="entry-section{css}" data-entry-section="{section}"{" disabled" if readonly else ""}><legend>{step}{title}</legend><div class="entry-grid">{fields}</div></fieldset>'
+    if group_open:
+        html += '</div>'
     html += '</div></div><div class="entry-form-actions"><div class="entry-form-buttons"><a class="entry-btn" href="/entries">Cancel</a><button class="entry-btn primary" type="submit">' + ('Save changes' if edit else 'Save sales entry') + '</button></div></div></form></div>'
     if not writable:
         html = html.replace('<button class="entry-btn primary" type="submit">Save changes</button>', '')
@@ -672,7 +709,7 @@ def entry_form(options, values, token, user=None):
         # Which invoice is being completed stays visible; it is not help text.
         html = html.replace(f'<div><h2>{header}</h2></div>', f'<div><h2>{header}</h2><p>{context}</p></div>', 1)
         html = html.replace('>Save changes</button>', f'>Save {edit_subject} details</button>')
-        html = html.replace('<span class="step" aria-hidden="true">05</span>', '')
+        html = html.replace('<span class="step" aria-hidden="true">04</span>', '')
     if user is not None and not auth.can(user, 'registers.view'):
         html = html.replace('href="/entries">Cancel', 'href="/entries?view=new">Cancel')
     html += """<script>
@@ -682,6 +719,8 @@ def entry_form(options, values, token, user=None):
     for(const o of city.options){if(!o.value)continue;o.hidden=o.dataset.state!==state.value||!!district.value&&o.dataset.district!==district.value;o.disabled=o.hidden;if(o.hidden&&o.selected)city.value='';}}
     state.addEventListener('change',()=>{district.value='';city.value='';filter()});district.addEventListener('change',()=>{city.value='';filter()});city.addEventListener('change',()=>{const o=city.selectedOptions[0];if(o&&o.value){district.value=o.dataset.district||'';filter()}});filter();})();
     </script>"""
+    if may_view_customer(user) and not limited_edit:
+        html += customer_ui.assets()
     return html
 
 
@@ -972,6 +1011,57 @@ def register(app, current_user, login_redirect, page, invalidate):
     def entries(request: Request):
         user = current_user(request)
         return render(request, user) if user else login_redirect(request)
+
+    def customer_failure(message, status):
+        return JSONResponse({'message': message}, status_code=status,
+                            headers={'Cache-Control': 'no-store'})
+
+    def read_customer_profile(customer_id, user):
+        with closing(pgdata.connect()) as conn, conn.cursor() as cur:
+            return customer_details.get_profile(cur, customer_id, channels=entry_channels(user))
+
+    @app.get('/entries/customers/{customer_id}')
+    def customer_profile(request: Request, customer_id: int):
+        user = current_user(request)
+        if not user:
+            return customer_failure('Sign in to view customer details.', 401)
+        if not may_view_customer(user):
+            return customer_failure('You do not have access to view customer details.', 403)
+        try:
+            profile = read_customer_profile(customer_id, user)
+        except customer_details.CustomerError as exc:
+            return customer_failure(str(exc), 404)
+        except Exception:
+            return customer_failure('Customer details are unavailable. Please try again.', 503)
+        return JSONResponse({'customer': profile}, headers={'Cache-Control': 'no-store'})
+
+    def persist_customer_profile(customer_id, form, user):
+        with closing(pgdata.connect()) as conn, conn:
+            with conn.cursor() as cur:
+                return customer_details.update_customer(
+                    cur, customer_id, customer_details.parse_fields(form),
+                    {key: form.get(key) for key in ('state_id', 'district_id', 'city_id')},
+                    form.get('revision'), user['username'], channels=entry_channels(user))
+
+    @app.post('/entries/customers/{customer_id}')
+    async def update_customer_profile(request: Request, customer_id: int):
+        user = current_user(request)
+        if not user:
+            return customer_failure('Sign in to update customer details.', 401)
+        if not may_manage_customer(user):
+            return customer_failure('Customer updates require Invoice & customer and Location edit access.', 403)
+        if request.headers.get('content-length', '').isdigit() and int(request.headers['content-length']) > 16000:
+            return customer_failure('The customer details are too long.', 400)
+        form = await request.form()
+        if not valid_csrf(request, form):
+            return customer_failure('Reload the sales entry page and try again.', 403)
+        try:
+            profile = await run_in_threadpool(persist_customer_profile, customer_id, form, user)
+        except customer_details.CustomerError as exc:
+            return customer_failure(str(exc), getattr(exc, 'status_code', 400))
+        except Exception:
+            return customer_failure('The customer could not be updated. Please try again.', 503)
+        return JSONResponse({'customer': profile}, headers={'Cache-Control': 'no-store'})
 
     @app.post('/entries/save')
     async def save(request: Request):
